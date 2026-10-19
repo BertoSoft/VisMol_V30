@@ -19,7 +19,6 @@ Vista::~Vista(){
 //======================================================================================
 
 void Vista::initUi(){
-    initGrupoHerramientas();
     initGrupoElementos();
     setEstilos();
 }
@@ -33,22 +32,18 @@ void Vista::initLienzo(Lienzo* lienzo){
     initEscena();
 }
 
-void Vista::initGrupoHerramientas(){
-    QButtonGroup* grupoHerramientas = new QButtonGroup(this);
-    grupoHerramientas->setExclusive(true);
-    grupoHerramientas->addButton(ui->btnSeleccion);
-    grupoHerramientas->addButton(ui->btnModoEnlace);
-    grupoHerramientas->addButton(ui->btnModoRotar);
-}
-
 void Vista::initGrupoElementos(){
-    QButtonGroup *grupoElementos = new QButtonGroup(this);
-    grupoElementos->setExclusive(true);
-    grupoElementos->addButton(ui->btnCarbono);
-    grupoElementos->addButton(ui->btnHidrogeno);
-    grupoElementos->addButton(ui->btnOxigeno);
-    grupoElementos->addButton(ui->btnNitrogeno);
-    grupoElementos->addButton(ui->btnAzufre);
+    m_grupoIzdo = new QButtonGroup(this);
+    m_grupoIzdo->setExclusive(true);
+    m_grupoIzdo->addButton(ui->btnSeleccion);
+    m_grupoIzdo->addButton(ui->btnModoEnlace);
+    m_grupoIzdo->addButton(ui->btnModoRotar);
+    m_grupoIzdo->addButton(ui->btnCarbono);
+    m_grupoIzdo->addButton(ui->btnHidrogeno);
+    m_grupoIzdo->addButton(ui->btnOxigeno);
+    m_grupoIzdo->addButton(ui->btnNitrogeno);
+    m_grupoIzdo->addButton(ui->btnAzufre);
+    m_grupoIzdo->addButton(ui->btnTablaPeriodica);
 
 }
 
@@ -62,19 +57,12 @@ void Vista::initEscena(){
 }
 
 //======================================================================================
-// SLOTS PRIVADOS de Botones
-//======================================================================================
-void Vista::on_actionSalir_triggered(){
-    close(); // Cierra limpiamente la ventana principal y finaliza el proceso
-}
-
-//======================================================================================
 // Funciones Privadas
 //======================================================================================
 void Vista::actualizarUi(Estado estado){
 
     // 1.- Botones del menu Archivo
-    ui->actionCerrar->setEnabled(!estado.estaVacio);
+    ui->actionCerrar->setEnabled(estado.estaEmpezado);
     ui->actionGuardar->setEnabled(!estado.estaVacio);
     ui->actionGuardarComo->setEnabled(!estado.estaVacio);
 
@@ -85,13 +73,34 @@ void Vista::actualizarUi(Estado estado){
     ui->actionLimpiarLienzo->setEnabled(!estado.estaVacio);
 
     // 3.- Botones de Calculo
-    ui->actionConfigurarLanzar->setEnabled(!estado.estaVacio);
+    ui->actionConfigurarLanzar->setEnabled(estado.estaEmpezado);
     ui->actionDetenerSimulacion->setEnabled(estado.hayProceso);
 
     // 4.- barra elementos
-    ui->btnSeleccion->setChecked(estado.modoEditor == ModoEditor::ModoSeleccion);
-    ui->btnModoEnlace->setChecked(estado.modoEditor == ModoEditor::ModoCrearEnlace);
-    ui->btnModoRotar->setChecked(estado.modoEditor == ModoEditor::ModoRotacion3D);
+    if(estado.estaEmpezado){
+        ui->btnSeleccion->setChecked(estado.modoEditor == ModoEditor::ModoSeleccion);
+        ui->btnModoEnlace->setChecked(estado.modoEditor == ModoEditor::ModoCrearEnlace);
+        ui->btnModoRotar->setChecked(estado.modoEditor == ModoEditor::ModoRotacion3D);
+        ui->barraIzda->setEnabled(estado.estaEmpezado);
+    }
+    else{
+        m_grupoIzdo->setExclusive(false);
+        if(m_grupoIzdo->checkedButton()){
+            m_grupoIzdo->checkedButton()->setChecked(false);
+        }
+        m_grupoIzdo->setExclusive(true);
+        ui->barraIzda->setEnabled(false);
+    }
+
+    // 5.- Barra derecha
+    ui->barraDerecha->setEnabled(estado.estaEmpezado);
+    if(estado.estaEmpezado){
+        ui->btnLanzar->setEnabled(!estado.estaVacio && !estado.hayProceso);
+        ui->btnAbortar->setEnabled(estado.hayProceso);
+
+        ui->frameEjecucion->setEnabled(!estado.hayProceso);
+        ui->frameSoftware->setEnabled(!estado.hayProceso);
+    }
 
 }
 
@@ -171,6 +180,13 @@ void Vista::setEstilos(){
         "    border-radius: 4px;"
         "    padding: 4px 8px;"
         "}"
+        "QComboBox QAbstractItemView {"
+        "    background-color: #1F2937;" // Fondo del menú desplegable
+        "    color: #F3F4F6;"            // Color del texto de las opciones
+        "    selection-background-color: #38BDF8;" // Color de fondo al pasar el ratón
+        "    selection-color: #0F172A;"            // Color del texto al pasar el ratón
+        "    border: 1px solid #4B5563;"
+        "}"
         "QPushButton#btnLanzar {"
         "    background-color: #10B981;"
         "    color: white;"
@@ -193,7 +209,41 @@ void Vista::setEstilos(){
         "    font-family: 'Consolas', 'Courier New', monospace;"
         "    border: 1px solid #1F2937;"
         "    border-radius: 4px;"
+        "}"
+        "QFrame#barraDerecha QLabel {"
+        "    color: #94A3B8;" // Gris claro elegante para títulos y etiquetas
+        "    font-weight: bold;"
+        "}"
+        "QTextEdit {"
+        "    color: #10B981;" // Forzamos que cualquier texto insertado sea verde terminal
+        "}"
+        "QListWidget::item {"
+        "    color: #E2E8F0;" // Texto de la lista de frecuencias en gris blanco
+        "}"
+        "QListWidget::item:selected {"
+        "    background-color: #38BDF8;"
+        "    color: #0F172A;"
         "}";
 
     this->setStyleSheet(qss);
 }
+
+///======================================================================================
+// SLOTS PRIVADOS de Botones
+//======================================================================================
+void Vista::on_actionSalir_triggered(){
+    close(); // Cierra limpiamente la ventana principal y finaliza el proceso
+}
+
+void Vista::on_actionNuevo_triggered(){
+    m_view->nuevoProyecto();
+}
+
+void Vista::on_actionCerrar_triggered(){
+    m_view->cerrarProyecto();
+}
+
+void Vista::on_actionAbrir_triggered(){
+    m_view->abrirProyecto();
+}
+

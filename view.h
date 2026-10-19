@@ -59,6 +59,7 @@ enum ModoEditor {
 struct Estado {
     ModoEditor  modoEditor;
     bool        estaVacio;
+    bool        estaEmpezado;
     bool        estaGuardado;
     bool        estaModificado;
     bool        hayProceso;
@@ -80,6 +81,9 @@ public:
 // FUNCIONES PUBLICAS
 // =========================================================================
     void initUi();
+    void nuevoProyecto();
+    void abrirProyecto();
+    void cerrarProyecto();
 
 
 signals:

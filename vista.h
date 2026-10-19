@@ -43,6 +43,12 @@ private slots:
     // =========================================================================
     void on_actionSalir_triggered();
 
+    void on_actionNuevo_triggered();
+
+    void on_actionCerrar_triggered();
+
+    void on_actionAbrir_triggered();
+
 private:
     Ui::Vista *ui;
 
@@ -50,7 +56,6 @@ private:
     // BLOQUE: MÉTODOS DE INICIALIZACIÓN POR CAPAS MODULARES
     // =========================================================================
     void initUi();
-    void initGrupoHerramientas();
     void initGrupoElementos();
     void initEscena();
 
@@ -59,7 +64,9 @@ private:
     //=========================================================================
     void setEstilos();
 
-    Lienzo  *m_lienzo   = nullptr;
-    View    *m_view     = nullptr;
+    Lienzo*         m_lienzo            = nullptr;
+    View*           m_view              = nullptr;
+    QButtonGroup*   m_grupoIzdo         = nullptr;
+
 };
 #endif // VISTA_H

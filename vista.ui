@@ -6,8 +6,8 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>16777193</width>
-    <height>16777193</height>
+    <width>1200</width>
+    <height>800</height>
    </rect>
   </property>
   <property name="windowTitle">
@@ -250,6 +250,9 @@
            <height>24</height>
           </size>
          </property>
+         <property name="checkable">
+          <bool>true</bool>
+         </property>
         </widget>
        </item>
        <item>
@@ -316,7 +319,7 @@
     <item>
      <widget class="QGraphicsView" name="visorMolecular">
       <property name="sizePolicy">
-       <sizepolicy hsizetype="Expanding" vsizetype="Expanding">
+       <sizepolicy hsizetype="Preferred" vsizetype="Preferred">
         <horstretch>0</horstretch>
         <verstretch>0</verstretch>
        </sizepolicy>
@@ -519,7 +522,7 @@
     <rect>
      <x>0</x>
      <y>0</y>
-     <width>16777193</width>
+     <width>1200</width>
      <height>23</height>
     </rect>
    </property>
