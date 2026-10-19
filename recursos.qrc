@@ -1,0 +1,32 @@
+<RCC>
+    <qresource prefix="/iconos">
+        <file alias="abrir.png">iconos/abrir.png</file>
+        <file alias="atomo_c.png">iconos/atomo_c.png</file>
+        <file alias="atomo_h.png">iconos/atomo_h.png</file>
+        <file alias="atomo_n.png">iconos/atomo_n.png</file>
+        <file alias="atomo_o.png">iconos/atomo_o.png</file>
+        <file alias="atomo_s.png">iconos/atomo_s.png</file>
+        <file alias="cerrar.png">iconos/cerrar.png</file>
+        <file alias="configurar.png">iconos/configurar.png</file>
+        <file alias="deshacer.png">iconos/deshacer.png</file>
+        <file alias="detener.png">iconos/detener.png</file>
+        <file alias="editar.png">iconos/editar.png</file>
+        <file alias="enlace.png">iconos/enlace.png</file>
+        <file alias="exportar.png">iconos/exportar.png</file>
+        <file alias="frecuencias.png">iconos/frecuencias.png</file>
+        <file alias="guardar.png">iconos/guardar.png</file>
+        <file alias="guardar_como.png">iconos/guardar_como.png</file>
+        <file alias="importar.png">iconos/importar.png</file>
+        <file alias="limpiar.png">iconos/limpiar.png</file>
+        <file alias="nuevo.png">iconos/nuevo.png</file>
+        <file alias="opt.png">iconos/opt.png</file>
+        <file alias="optimizacion.png">iconos/optimizacion.png</file>
+        <file alias="puntero.png">iconos/puntero.png</file>
+        <file alias="rehacer.png">iconos/rehacer.png</file>
+        <file alias="rotar.png">iconos/rotar.png</file>
+        <file alias="rotar3d.png">iconos/rotar3d.png</file>
+        <file alias="salir.png">iconos/salir.png</file>
+        <file alias="tabla_periodica.png">iconos/tabla_periodica.png</file>
+        <file alias="ver_texto.png">iconos/ver_texto.png</file>
+    </qresource>
+</RCC>

@@ -6,26 +6,669 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>800</width>
-    <height>600</height>
+    <width>1200</width>
+    <height>800</height>
    </rect>
   </property>
   <property name="windowTitle">
-   <string>Vista</string>
+   <string>VisMol V3.0 - Editor/Visor Molecular Quantum ⚛️</string>
   </property>
-  <widget class="QWidget" name="centralwidget"/>
+  <widget class="QWidget" name="centralwidget">
+   <layout class="QHBoxLayout" name="horizontalLayout_Main">
+    <item>
+     <widget class="QFrame" name="leftSidebar">
+      <property name="maximumSize">
+       <size>
+        <width>75</width>
+        <height>16777215</height>
+       </size>
+      </property>
+      <property name="frameShape">
+       <enum>QFrame::Shape::StyledPanel</enum>
+      </property>
+      <layout class="QVBoxLayout" name="verticalLayout_Left">
+       <item>
+        <widget class="QPushButton" name="btnSeleccion">
+         <property name="toolTip">
+          <string>Herramienta de Seleccion / Puntero 🔍</string>
+         </property>
+         <property name="icon">
+          <iconset resource="iconos.qrc">:/iconos/puntero.png</iconset>
+         </property>
+         <property name="iconSize">
+          <size>
+           <width>24</width>
+           <height>24</height>
+          </size>
+         </property>
+         <property name="checkable">
+          <bool>true</bool>
+         </property>
+        </widget>
+       </item>
+       <item>
+        <widget class="QPushButton" name="btnModoEnlace">
+         <property name="toolTip">
+          <string>Crear un nuevo enlace entre atomos 🔗</string>
+         </property>
+         <property name="text">
+          <string/>
+         </property>
+         <property name="icon">
+          <iconset resource="iconos.qrc">:/iconos/enlace.png</iconset>
+         </property>
+         <property name="iconSize">
+          <size>
+           <width>24</width>
+           <height>24</height>
+          </size>
+         </property>
+         <property name="checkable">
+          <bool>true</bool>
+         </property>
+        </widget>
+       </item>
+       <item>
+        <widget class="QPushButton" name="btnModoRotar">
+         <property name="toolTip">
+          <string>Rotar la molecula en el espacio 3D 🔄</string>
+         </property>
+         <property name="text">
+          <string/>
+         </property>
+         <property name="icon">
+          <iconset resource="iconos.qrc">:/iconos/rotar.png</iconset>
+         </property>
+         <property name="iconSize">
+          <size>
+           <width>24</width>
+           <height>24</height>
+          </size>
+         </property>
+         <property name="checkable">
+          <bool>true</bool>
+         </property>
+        </widget>
+       </item>
+       <item>
+        <widget class="Line" name="lineSeparador1">
+         <property name="orientation">
+          <enum>Qt::Orientation::Horizontal</enum>
+         </property>
+        </widget>
+       </item>
+       <item>
+        <widget class="QPushButton" name="btnCarbono">
+         <property name="toolTip">
+          <string>Elemento: Carbono (C)</string>
+         </property>
+         <property name="text">
+          <string/>
+         </property>
+         <property name="icon">
+          <iconset resource="iconos.qrc">:/iconos/atomo_c.png</iconset>
+         </property>
+         <property name="iconSize">
+          <size>
+           <width>24</width>
+           <height>24</height>
+          </size>
+         </property>
+         <property name="checkable">
+          <bool>true</bool>
+         </property>
+        </widget>
+       </item>
+       <item>
+        <widget class="QPushButton" name="btnHidrogeno">
+         <property name="toolTip">
+          <string>Elemento: Hidrogeno (H)</string>
+         </property>
+         <property name="text">
+          <string/>
+         </property>
+         <property name="icon">
+          <iconset resource="iconos.qrc">:/iconos/atomo_h.png</iconset>
+         </property>
+         <property name="iconSize">
+          <size>
+           <width>24</width>
+           <height>24</height>
+          </size>
+         </property>
+         <property name="checkable">
+          <bool>true</bool>
+         </property>
+        </widget>
+       </item>
+       <item>
+        <widget class="QPushButton" name="btnOxigeno">
+         <property name="toolTip">
+          <string>Elemento: Oxigeno (O)</string>
+         </property>
+         <property name="text">
+          <string/>
+         </property>
+         <property name="icon">
+          <iconset resource="iconos.qrc">:/iconos/atomo_o.png</iconset>
+         </property>
+         <property name="iconSize">
+          <size>
+           <width>24</width>
+           <height>24</height>
+          </size>
+         </property>
+         <property name="checkable">
+          <bool>true</bool>
+         </property>
+        </widget>
+       </item>
+       <item>
+        <widget class="QPushButton" name="btnNitrogeno">
+         <property name="toolTip">
+          <string>Elemento: Nitrogeno (N)</string>
+         </property>
+         <property name="text">
+          <string/>
+         </property>
+         <property name="icon">
+          <iconset resource="iconos.qrc">:/iconos/atomo_n.png</iconset>
+         </property>
+         <property name="iconSize">
+          <size>
+           <width>24</width>
+           <height>24</height>
+          </size>
+         </property>
+         <property name="checkable">
+          <bool>true</bool>
+         </property>
+        </widget>
+       </item>
+       <item>
+        <widget class="QPushButton" name="btnAzufre">
+         <property name="toolTip">
+          <string>Elemento: Azufre (S)</string>
+         </property>
+         <property name="text">
+          <string/>
+         </property>
+         <property name="icon">
+          <iconset resource="iconos.qrc">:/iconos/atomo_s.png</iconset>
+         </property>
+         <property name="iconSize">
+          <size>
+           <width>24</width>
+           <height>24</height>
+          </size>
+         </property>
+         <property name="checkable">
+          <bool>true</bool>
+         </property>
+        </widget>
+       </item>
+       <item>
+        <widget class="Line" name="lineSeparador2">
+         <property name="orientation">
+          <enum>Qt::Orientation::Horizontal</enum>
+         </property>
+        </widget>
+       </item>
+       <item>
+        <widget class="QPushButton" name="btnTablaPeriodica">
+         <property name="toolTip">
+          <string>Abrir la Tabla Periodica completa 🌐</string>
+         </property>
+         <property name="icon">
+          <iconset resource="iconos.qrc">:/iconos/tabla_periodica.png</iconset>
+         </property>
+         <property name="iconSize">
+          <size>
+           <width>24</width>
+           <height>24</height>
+          </size>
+         </property>
+        </widget>
+       </item>
+       <item>
+        <widget class="QPushButton" name="btnOptRapida">
+         <property name="toolTip">
+          <string>Optimización geométrica rápida con MOPAC (Auto-Clean) ⚡</string>
+         </property>
+         <property name="icon">
+          <iconset resource="iconos.qrc">:/iconos/optimizacion.png</iconset>
+         </property>
+         <property name="iconSize">
+          <size>
+           <width>24</width>
+           <height>24</height>
+          </size>
+         </property>
+        </widget>
+       </item>
+       <item>
+        <spacer name="spacerLeft">
+         <property name="orientation">
+          <enum>Qt::Orientation::Vertical</enum>
+         </property>
+         <property name="sizeHint" stdset="0">
+          <size>
+           <width>0</width>
+           <height>0</height>
+          </size>
+         </property>
+        </spacer>
+       </item>
+      </layout>
+     </widget>
+    </item>
+    <item>
+     <widget class="QGraphicsView" name="visorMolecular">
+      <property name="sizePolicy">
+       <sizepolicy hsizetype="Expanding" vsizetype="Expanding">
+        <horstretch>0</horstretch>
+        <verstretch>0</verstretch>
+       </sizepolicy>
+      </property>
+     </widget>
+    </item>
+    <item>
+     <widget class="QFrame" name="rightSidebar">
+      <property name="minimumSize">
+       <size>
+        <width>300</width>
+        <height>0</height>
+       </size>
+      </property>
+      <property name="maximumSize">
+       <size>
+        <width>340</width>
+        <height>16777215</height>
+       </size>
+      </property>
+      <property name="frameShape">
+       <enum>QFrame::Shape::StyledPanel</enum>
+      </property>
+      <layout class="QVBoxLayout" name="verticalLayout_Right">
+       <item>
+        <widget class="QFrame" name="frameSoftware">
+         <layout class="QVBoxLayout" name="layoutSoft">
+          <item>
+           <widget class="QLabel" name="lblTituloSoftware">
+            <property name="styleSheet">
+             <string>font-weight: bold; color: #38BDF8;</string>
+            </property>
+            <property name="text">
+             <string>🧪 MECÁNICA CUÁNTICA</string>
+            </property>
+           </widget>
+          </item>
+          <item>
+           <widget class="QComboBox" name="comboSoftware">
+            <item>
+             <property name="text">
+              <string>Gaussian</string>
+             </property>
+            </item>
+            <item>
+             <property name="text">
+              <string>MOPAC</string>
+             </property>
+            </item>
+           </widget>
+          </item>
+          <item>
+           <widget class="QPushButton" name="btnConfigurarParametros">
+            <property name="text">
+             <string>🔧 Configurar Parametros...</string>
+            </property>
+           </widget>
+          </item>
+         </layout>
+        </widget>
+       </item>
+       <item>
+        <widget class="Line" name="sepRight1">
+         <property name="orientation">
+          <enum>Qt::Orientation::Horizontal</enum>
+         </property>
+        </widget>
+       </item>
+       <item>
+        <widget class="QFrame" name="frameEjecucion">
+         <layout class="QVBoxLayout" name="layoutEjecucion">
+          <item>
+           <widget class="QLabel" name="lblTituloEjecucion">
+            <property name="styleSheet">
+             <string>font-weight: bold; color: #38BDF8;</string>
+            </property>
+            <property name="text">
+             <string>🚀 CONTROL DE PROCESO</string>
+            </property>
+           </widget>
+          </item>
+          <item>
+           <layout class="QHBoxLayout" name="horizontalLayout_Controles">
+            <item>
+             <widget class="QPushButton" name="btnLanzar">
+              <property name="text">
+               <string>▶️ Lanzar</string>
+              </property>
+             </widget>
+            </item>
+            <item>
+             <widget class="QPushButton" name="btnAbortar">
+              <property name="text">
+               <string>⏹️ Abortar</string>
+              </property>
+             </widget>
+            </item>
+           </layout>
+          </item>
+         </layout>
+        </widget>
+       </item>
+       <item>
+        <widget class="Line" name="sepRight2">
+         <property name="orientation">
+          <enum>Qt::Orientation::Horizontal</enum>
+         </property>
+        </widget>
+       </item>
+       <item>
+        <widget class="QFrame" name="frameResultados">
+         <layout class="QVBoxLayout" name="layoutResultados">
+          <item>
+           <widget class="QLabel" name="lblTituloResultados">
+            <property name="styleSheet">
+             <string>font-weight: bold; color: #38BDF8;</string>
+            </property>
+            <property name="text">
+             <string>📊 RESULTADOS Y ESTADO</string>
+            </property>
+           </widget>
+          </item>
+          <item>
+           <widget class="QLabel" name="lblEstado">
+            <property name="text">
+             <string>Estado: Listo</string>
+            </property>
+           </widget>
+          </item>
+          <item>
+           <widget class="QLabel" name="lblEnergia">
+            <property name="text">
+             <string>Energia: -- u.a.</string>
+            </property>
+           </widget>
+          </item>
+          <item>
+           <widget class="QTextEdit" name="txtMiniLog">
+            <property name="readOnly">
+             <bool>true</bool>
+            </property>
+           </widget>
+          </item>
+         </layout>
+        </widget>
+       </item>
+       <item>
+        <widget class="Line" name="sepRight3">
+         <property name="orientation">
+          <enum>Qt::Orientation::Horizontal</enum>
+         </property>
+        </widget>
+       </item>
+       <item>
+        <widget class="QFrame" name="frameFrecuencias">
+         <layout class="QVBoxLayout" name="layoutFreq">
+          <item>
+           <widget class="QLabel" name="lblTituloFreq">
+            <property name="styleSheet">
+             <string>font-weight: bold; color: #38BDF8;</string>
+            </property>
+            <property name="text">
+             <string>📈 MODOS VIBRACIONALES (IR)</string>
+            </property>
+           </widget>
+          </item>
+          <item>
+           <widget class="QListWidget" name="listaFrecuencias">
+            <property name="minimumSize">
+             <size>
+              <width>0</width>
+              <height>120</height>
+             </size>
+            </property>
+           </widget>
+          </item>
+         </layout>
+        </widget>
+       </item>
+       <item>
+        <spacer name="spacerRight">
+         <property name="orientation">
+          <enum>Qt::Orientation::Vertical</enum>
+         </property>
+         <property name="sizeHint" stdset="0">
+          <size>
+           <width>0</width>
+           <height>0</height>
+          </size>
+         </property>
+        </spacer>
+       </item>
+      </layout>
+     </widget>
+    </item>
+   </layout>
+  </widget>
   <widget class="QMenuBar" name="menubar">
    <property name="geometry">
     <rect>
      <x>0</x>
      <y>0</y>
-     <width>800</width>
+     <width>1200</width>
      <height>23</height>
     </rect>
    </property>
+   <widget class="QMenu" name="menuArchivo">
+    <property name="title">
+     <string>&amp;Archivo</string>
+    </property>
+    <addaction name="actionNuevo"/>
+    <addaction name="actionAbrir"/>
+    <addaction name="actionGuardar"/>
+    <addaction name="actionGuardarComo"/>
+    <addaction name="actionCerrar"/>
+    <addaction name="separator"/>
+    <addaction name="actionSalir"/>
+   </widget>
+   <widget class="QMenu" name="menuEditar">
+    <property name="title">
+     <string>&amp;Edicion</string>
+    </property>
+    <addaction name="actionDeshacer"/>
+    <addaction name="actionRehacer"/>
+    <addaction name="separator"/>
+    <addaction name="actionComentarioProyecto"/>
+    <addaction name="actionLimpiarLienzo"/>
+   </widget>
+   <widget class="QMenu" name="menuCalculo">
+    <property name="title">
+     <string>&amp;Calculo QM</string>
+    </property>
+    <addaction name="actionConfigurarLanzar"/>
+    <addaction name="actionDetenerSimulacion"/>
+   </widget>
+   <addaction name="menuArchivo"/>
+   <addaction name="menuEditar"/>
+   <addaction name="menuCalculo"/>
   </widget>
   <widget class="QStatusBar" name="statusbar"/>
+  <widget class="QToolBar" name="toolBar">
+   <property name="windowTitle">
+    <string>toolBar</string>
+   </property>
+   <attribute name="toolBarArea">
+    <enum>TopToolBarArea</enum>
+   </attribute>
+   <attribute name="toolBarBreak">
+    <bool>false</bool>
+   </attribute>
+   <addaction name="actionNuevo"/>
+   <addaction name="actionAbrir"/>
+   <addaction name="actionCerrar"/>
+   <addaction name="actionGuardar"/>
+   <addaction name="actionGuardarComo"/>
+   <addaction name="separator"/>
+   <addaction name="separator"/>
+   <addaction name="separator"/>
+   <addaction name="actionDeshacer"/>
+   <addaction name="actionRehacer"/>
+   <addaction name="separator"/>
+   <addaction name="separator"/>
+   <addaction name="separator"/>
+   <addaction name="actionComentarioProyecto"/>
+   <addaction name="actionLimpiarLienzo"/>
+   <addaction name="actionConfigurarLanzar"/>
+   <addaction name="actionDetenerSimulacion"/>
+  </widget>
+  <action name="actionNuevo">
+   <property name="icon">
+    <iconset resource="iconos.qrc">
+     <normaloff>:/iconos/nuevo.png</normaloff>:/iconos/nuevo.png</iconset>
+   </property>
+   <property name="text">
+    <string>Nuevo Proyecto</string>
+   </property>
+   <property name="shortcut">
+    <string>Ctrl+N</string>
+   </property>
+  </action>
+  <action name="actionAbrir">
+   <property name="icon">
+    <iconset resource="iconos.qrc">
+     <normaloff>:/iconos/abrir.png</normaloff>:/iconos/abrir.png</iconset>
+   </property>
+   <property name="text">
+    <string>Abrir Proyecto / Archivo...</string>
+   </property>
+   <property name="shortcut">
+    <string>Ctrl+O</string>
+   </property>
+  </action>
+  <action name="actionGuardar">
+   <property name="icon">
+    <iconset resource="iconos.qrc">
+     <normaloff>:/iconos/guardar.png</normaloff>:/iconos/guardar.png</iconset>
+   </property>
+   <property name="text">
+    <string>Guardar Proyecto</string>
+   </property>
+   <property name="shortcut">
+    <string>Ctrl+S</string>
+   </property>
+  </action>
+  <action name="actionGuardarComo">
+   <property name="icon">
+    <iconset resource="iconos.qrc">
+     <normaloff>:/iconos/guardar_como.png</normaloff>:/iconos/guardar_como.png</iconset>
+   </property>
+   <property name="text">
+    <string>Guardar Proyecto en...</string>
+   </property>
+   <property name="shortcut">
+    <string>Ctrl+Shift+S</string>
+   </property>
+  </action>
+  <action name="actionCerrar">
+   <property name="icon">
+    <iconset resource="iconos.qrc">
+     <normaloff>:/iconos/cerrar.png</normaloff>:/iconos/cerrar.png</iconset>
+   </property>
+   <property name="text">
+    <string>Cerrar Proyecto</string>
+   </property>
+   <property name="shortcut">
+    <string>Ctrl+W</string>
+   </property>
+  </action>
+  <action name="actionSalir">
+   <property name="icon">
+    <iconset resource="iconos.qrc">
+     <normaloff>:/iconos/salir.png</normaloff>:/iconos/salir.png</iconset>
+   </property>
+   <property name="text">
+    <string>Salir</string>
+   </property>
+   <property name="shortcut">
+    <string>Ctrl+Q</string>
+   </property>
+  </action>
+  <action name="actionDeshacer">
+   <property name="icon">
+    <iconset resource="iconos.qrc">
+     <normaloff>:/iconos/deshacer.png</normaloff>:/iconos/deshacer.png</iconset>
+   </property>
+   <property name="text">
+    <string>Deshacer</string>
+   </property>
+   <property name="shortcut">
+    <string>Ctrl+Z</string>
+   </property>
+  </action>
+  <action name="actionRehacer">
+   <property name="icon">
+    <iconset resource="iconos.qrc">
+     <normaloff>:/iconos/rehacer.png</normaloff>:/iconos/rehacer.png</iconset>
+   </property>
+   <property name="text">
+    <string>Rehacer</string>
+   </property>
+   <property name="shortcut">
+    <string>Ctrl+Y</string>
+   </property>
+  </action>
+  <action name="actionComentarioProyecto">
+   <property name="icon">
+    <iconset resource="iconos.qrc">
+     <normaloff>:/iconos/editar.png</normaloff>:/iconos/editar.png</iconset>
+   </property>
+   <property name="text">
+    <string>Comentario del proyecto...</string>
+   </property>
+  </action>
+  <action name="actionLimpiarLienzo">
+   <property name="icon">
+    <iconset resource="iconos.qrc">
+     <normaloff>:/iconos/limpiar.png</normaloff>:/iconos/limpiar.png</iconset>
+   </property>
+   <property name="text">
+    <string>Limpiar Lienzo</string>
+   </property>
+  </action>
+  <action name="actionConfigurarLanzar">
+   <property name="icon">
+    <iconset resource="iconos.qrc">
+     <normaloff>:/iconos/configurar.png</normaloff>:/iconos/configurar.png</iconset>
+   </property>
+   <property name="text">
+    <string>Configurar y Lanzar Simulacion...</string>
+   </property>
+  </action>
+  <action name="actionDetenerSimulacion">
+   <property name="icon">
+    <iconset resource="iconos.qrc">
+     <normaloff>:/iconos/detener.png</normaloff>:/iconos/detener.png</iconset>
+   </property>
+   <property name="text">
+    <string>Detener Simulacion Activa</string>
+   </property>
+  </action>
  </widget>
- <resources/>
+ <resources>
+  <include location="iconos.qrc"/>
+ </resources>
  <connections/>
 </ui>

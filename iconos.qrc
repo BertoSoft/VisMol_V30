@@ -1,0 +1,32 @@
+<RCC>
+    <qresource prefix="/">
+        <file>iconos/abrir.png</file>
+        <file>iconos/atomo_c.png</file>
+        <file>iconos/atomo_h.png</file>
+        <file>iconos/atomo_n.png</file>
+        <file>iconos/atomo_o.png</file>
+        <file>iconos/atomo_s.png</file>
+        <file>iconos/cerrar.png</file>
+        <file>iconos/configurar.png</file>
+        <file>iconos/deshacer.png</file>
+        <file>iconos/detener.png</file>
+        <file>iconos/editar.png</file>
+        <file>iconos/enlace.png</file>
+        <file>iconos/exportar.png</file>
+        <file>iconos/frecuencias.png</file>
+        <file>iconos/guardar.png</file>
+        <file>iconos/guardar_como.png</file>
+        <file>iconos/importar.png</file>
+        <file>iconos/limpiar.png</file>
+        <file>iconos/nuevo.png</file>
+        <file>iconos/opt.png</file>
+        <file>iconos/optimizacion.png</file>
+        <file>iconos/puntero.png</file>
+        <file>iconos/rehacer.png</file>
+        <file>iconos/rotar.png</file>
+        <file>iconos/rotar3d.png</file>
+        <file>iconos/salir.png</file>
+        <file>iconos/tabla_periodica.png</file>
+        <file>iconos/ver_texto.png</file>
+    </qresource>
+</RCC>

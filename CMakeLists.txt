@@ -1,16 +1,21 @@
 cmake_minimum_required(VERSION 3.19)
-project(VisMol_V30 LANGUAGES CXX)
+project(VisMol_V20 LANGUAGES CXX)
 
 find_package(Qt6 6.5 REQUIRED COMPONENTS Core Widgets)
 
 qt_standard_project_setup()
 
+# Habilita el compilador automático de recursos de Qt (RCC)
+set(CMAKE_AUTORCC ON)
+
+# Compilación aislada y limpia exclusivamente orientada a la Interfaz Gráfica
 qt_add_executable(VisMol_V30
     WIN32 MACOSX_BUNDLE
     main.cpp
-    vista.cpp
     vista.h
     vista.ui
+    vista.cpp
+    iconos.qrc             # Mantener el archivo aquí es correcto
 )
 
 target_link_libraries(VisMol_V30
