@@ -1,15 +1,30 @@
 #include "vista.h"
 
 #include <QApplication>
-#include <QResource>
+#include <QObject>
 
 int main(int argc, char *argv[])
 {
     QApplication a(argc, argv);
 
-    Q_INIT_RESOURCE(iconos);
+    Vista*  vista   = new Vista();
+    View*   view    = new View();
+    Lienzo* lienzo  = new Lienzo();
 
-    Vista w;
-    w.show();
+    vista->initView(view);
+    vista->initLienzo(lienzo);
+
+
+
+    //======================================================================================
+    // Conexiones de señales
+    //=======================================================================================
+    QObject::connect(view, &View::actualizarVista, vista, &Vista::actualizarUi);
+
+
+
+    view->initUi();
+    vista->showMaximized();
+
     return QApplication::exec();
 }

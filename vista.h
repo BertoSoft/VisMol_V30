@@ -1,7 +1,11 @@
 #ifndef VISTA_H
 #define VISTA_H
 
+#include "lienzo.h"
+#include "view.h"
+
 #include <QMainWindow>
+#include <QButtonGroup> // Necesario para la exclusividad de los botones
 
 QT_BEGIN_NAMESPACE
 namespace Ui {
@@ -17,7 +21,45 @@ public:
     explicit Vista(QWidget *parent = nullptr);
     ~Vista() override;
 
+    const QString NOMBRE_APP = "VisMol V 3.0";
+
+// =========================================================================
+// BLOQUE: FUNCIONES PUBLICAS PARA SER LLAMADAS POR VIEW
+// =========================================================================
+    void initView(View* view);
+    void initLienzo(Lienzo* lienzo);
+
+// =========================================================================
+// BLOQUE: SLOTS DE SEÑALES PUBLICOS
+// =========================================================================
+public slots:
+    // Slots de sincronización descendente que llamará MoleculaView mediante señales
+    void actualizarUi(Estado estado);
+
+
+private slots:
+    // =========================================================================
+    // BLOQUE: GESTIÓN DE BOTONERÍA Y CONTROLES INTERNOS DE INTERFAZ
+    // =========================================================================
+    void on_actionSalir_triggered();
+
 private:
     Ui::Vista *ui;
+
+    // =========================================================================
+    // BLOQUE: MÉTODOS DE INICIALIZACIÓN POR CAPAS MODULARES
+    // =========================================================================
+    void initUi();
+    void initGrupoHerramientas();
+    void initGrupoElementos();
+    void initEscena();
+
+    //=========================================================================
+    // BLOQUE: FUNCIONES Y VARIABLES PRIVADAS
+    //=========================================================================
+    void setEstilos();
+
+    Lienzo  *m_lienzo   = nullptr;
+    View    *m_view     = nullptr;
 };
 #endif // VISTA_H

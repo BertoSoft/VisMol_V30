@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.19)
-project(VisMol_V20 LANGUAGES CXX)
+project(VisMol_V30 LANGUAGES CXX)
 
 find_package(Qt6 6.5 REQUIRED COMPONENTS Core Widgets)
 
@@ -15,7 +15,10 @@ qt_add_executable(VisMol_V30
     vista.h
     vista.ui
     vista.cpp
-    iconos.qrc             # Mantener el archivo aquí es correcto
+    iconos.qrc
+    atomos.cpp atomos.h
+    lienzo.h lienzo.cpp
+    view.h view.cpp             # Mantener el archivo aquí es correcto
 )
 
 target_link_libraries(VisMol_V30
