@@ -1,6 +1,11 @@
 #include "vista.h"
 #include "ui_vista.h"
 
+#include <QMessageBox>
+#include <QDate>
+#include <QTime>
+#include <QTimer>
+
 Vista::Vista(QWidget *parent)
     : QMainWindow(parent)
     , ui(new Ui::Vista){
@@ -17,19 +22,19 @@ Vista::~Vista(){
 //======================================================================================
 // Funciones Init
 //======================================================================================
-
-void Vista::initUi(){
-    initGrupoElementos();
-    setEstilos();
-}
-
 void Vista::initView(View* view){
     m_view = view;
 }
 
 void Vista::initLienzo(Lienzo* lienzo){
     m_lienzo = lienzo;
-    initEscena();
+
+}
+
+void Vista::initUi(){
+    initGrupoElementos();
+    initBarraEstado();
+    setEstilos();
 }
 
 void Vista::initGrupoElementos(){
@@ -47,13 +52,34 @@ void Vista::initGrupoElementos(){
 
 }
 
-void Vista::initEscena(){
+void Vista::initBarraEstado(){
 
-    ui->visorMolecular->setScene(m_lienzo);
+    m_lblMesaje = new QLabel();
+    m_fecha     = new QLabel();
+    m_hora      = new QLabel();
 
-    //Activamos trucos de suavizado gráfico para que los átomos redondos no se vean pixelados
-    ui->visorMolecular->setRenderHint(QPainter::Antialiasing);
-    ui->visorMolecular->setRenderHint(QPainter::SmoothPixmapTransform);
+    QList<QLabel*> etiquetas = {m_lblMesaje, m_fecha, m_hora};
+    for(QLabel* label: etiquetas){
+        label->setFrameShape(QFrame::WinPanel);
+        label->setFrameShadow(QFrame::Sunken);
+        label->setAlignment(Qt::AlignCenter);
+    }
+    m_lblMesaje->setAlignment(Qt::AlignLeft);
+
+    ui->barraEstado->addWidget(m_lblMesaje, 1);
+    ui->barraEstado->addPermanentWidget(m_fecha);
+    ui->barraEstado->addPermanentWidget(m_hora);
+
+    m_fecha->setText(QDate::currentDate().toString("dddd, d 'de' MMMM 'de' yyyy"));
+    m_hora->setText(QTime::currentTime().toString("hh:mm:ss"));
+
+    // Hace que se refresque la hora y fecha cada segundo
+    QTimer* disparador = new QTimer(this);
+    connect(disparador, &QTimer::timeout, this, [this](){
+        m_fecha->setText(QDate::currentDate().toString("dddd, d 'de' MMMM 'de' yyyy"));
+        m_hora->setText(QTime::currentTime().toString("hh:mm:ss"));
+    });
+    disparador->start(1000);
 }
 
 //======================================================================================
@@ -93,13 +119,37 @@ void Vista::actualizarUi(Estado estado){
     }
 
     // 5.- Barra derecha
-    ui->barraDerecha->setEnabled(estado.estaEmpezado);
-    if(estado.estaEmpezado){
-        ui->btnLanzar->setEnabled(!estado.estaVacio && !estado.hayProceso);
+    ui->barraDerecha->setEnabled(!estado.estaVacio);
+    if(!estado.estaVacio){
+        ui->btnLanzar->setEnabled(!estado.hayProceso);
         ui->btnAbortar->setEnabled(estado.hayProceso);
 
         ui->frameEjecucion->setEnabled(!estado.hayProceso);
         ui->frameSoftware->setEnabled(!estado.hayProceso);
+    }
+
+    // 6.- Barra estado
+    if(!estado.estaEmpezado){
+        m_lblMesaje->setText(tr(" Listo. Cree un nuevo proyecto o abra un archivo para comenzar."));
+    }
+    else{
+        QString txt = "";
+        switch (estado.modoEditor) {
+        case ModoSeleccion:
+            txt = tr(" Modo Selección | Use el puntero para interactuar con los átomos.");
+            break;
+        case ModoCrearEnlace:
+            txt = tr(" Modo Enlace 🔗 | Seleccione dos átomos para enlazarlos.");
+            break;
+        case ModoRotacion3D:
+            txt = tr(" Modo Rotación 3D 🔄 | Arrastre el lienzo para orbitar la molécula.");
+            break;
+        case ModoDibujo:
+            // Usamos el dato inyectado en el estado
+            txt = tr(" Modo Dibujo 🧪 | Añadiendo elemento: %1 (Clic en lienzo para colocar)").arg(m_view->getAtomoActivo());
+            break;
+        }
+        m_lblMesaje->setText(txt);
     }
 
 }
@@ -167,6 +217,11 @@ void Vista::setEstilos(){
         "    background-color: #1E293B;"
         "    border-left: 1px solid #334155;"
         "}"
+        "QFrame#barraDerecha QWidget:disabled {"
+        "   background-color: #2e2e2e;"  // Fondo gris oscuro al desactivar
+        "   color: #777777;"              // Texto gris apagado
+        "   border: 1px solid #444444;"   // Borde suave
+        "}"
         "QFrame#frameSoftware, QFrame#frameEjecucion, QFrame#frameResultados, QFrame#frameFrecuencias {"
         "    background-color: #111827;"
         "    border: 1px solid #374151;"
@@ -228,6 +283,35 @@ void Vista::setEstilos(){
     this->setStyleSheet(qss);
 }
 
+bool Vista::sePuedeCerrar(){
+    if (!m_view) return true;
+
+    Estado estado = m_view->getEstado();
+
+    // Si no hay cambios sin guardar o está vacío, es seguro continuar
+    if (estado.estaGuardado || estado.estaVacio) {
+        return true;
+    }
+
+    // Si hay peligro, abrimos el cuadro de diálogo (responsabilidad de la Vista)
+    QMessageBox::StandardButton respuesta = QMessageBox::warning(
+        this,
+        tr("Cambios sin guardar"),
+        tr("El proyecto actual tiene cambios sin guardar.\n¿Desea guardarlos antes de continuar?"),
+        QMessageBox::Save | QMessageBox::Discard | QMessageBox::Cancel
+        );
+
+    if (respuesta == QMessageBox::Save) {
+        on_actionGuardar_triggered();
+        return true; // Continuamos tras guardar
+    }
+    else if (respuesta == QMessageBox::Discard) {
+        return true; // Continuamos descartando los cambios
+    }
+
+    return false; // El usuario pulsó Cancelar, detenemos cualquier acción
+}
+
 ///======================================================================================
 // SLOTS PRIVADOS de Botones
 //======================================================================================
@@ -236,7 +320,9 @@ void Vista::on_actionSalir_triggered(){
 }
 
 void Vista::on_actionNuevo_triggered(){
-    m_view->nuevoProyecto();
+    if(sePuedeCerrar()){
+        m_view->nuevoProyecto();
+    }
 }
 
 void Vista::on_actionCerrar_triggered(){
@@ -245,5 +331,41 @@ void Vista::on_actionCerrar_triggered(){
 
 void Vista::on_actionAbrir_triggered(){
     m_view->abrirProyecto();
+}
+
+void Vista::on_actionGuardar_triggered(){
+
+}
+
+void Vista::on_btnCarbono_clicked(){
+    m_view->setElementoActivo("C");
+}
+
+void Vista::on_btnHidrogeno_clicked(){
+    m_view->setElementoActivo("H");
+}
+
+void Vista::on_btnOxigeno_clicked(){
+    m_view->setElementoActivo("O");
+}
+
+void Vista::on_btnNitrogeno_clicked(){
+    m_view->setElementoActivo("N");
+}
+
+void Vista::on_btnAzufre_clicked(){
+    m_view->setElementoActivo("S");
+}
+
+void Vista::on_btnSeleccion_clicked(){
+    m_view->setModoEditor(ModoSeleccion);
+}
+
+void Vista::on_btnModoEnlace_clicked(){
+    m_view->setModoEditor(ModoCrearEnlace);
+}
+
+void Vista::on_btnModoRotar_clicked(){
+    m_view->setModoEditor(ModoRotacion3D);
 }
 

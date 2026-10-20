@@ -1,11 +1,13 @@
 #ifndef VISTA_H
 #define VISTA_H
 
-#include "lienzo.h"
 #include "view.h"
+#include "lienzo.h"
+
 
 #include <QMainWindow>
 #include <QButtonGroup> // Necesario para la exclusividad de los botones
+#include <QLabel>
 
 QT_BEGIN_NAMESPACE
 namespace Ui {
@@ -49,6 +51,24 @@ private slots:
 
     void on_actionAbrir_triggered();
 
+    void on_actionGuardar_triggered();
+
+    void on_btnCarbono_clicked();
+
+    void on_btnHidrogeno_clicked();
+
+    void on_btnOxigeno_clicked();
+
+    void on_btnNitrogeno_clicked();
+
+    void on_btnAzufre_clicked();
+
+    void on_btnSeleccion_clicked();
+
+    void on_btnModoEnlace_clicked();
+
+    void on_btnModoRotar_clicked();
+
 private:
     Ui::Vista *ui;
 
@@ -57,16 +77,24 @@ private:
     // =========================================================================
     void initUi();
     void initGrupoElementos();
-    void initEscena();
+    void initBarraEstado();
 
     //=========================================================================
     // BLOQUE: FUNCIONES Y VARIABLES PRIVADAS
     //=========================================================================
     void setEstilos();
+    bool sePuedeCerrar();
 
-    Lienzo*         m_lienzo            = nullptr;
     View*           m_view              = nullptr;
+    Lienzo*         m_lienzo            = nullptr;
     QButtonGroup*   m_grupoIzdo         = nullptr;
+
+    QLabel*         m_lblMesaje         = nullptr;
+    QLabel*         m_fecha             = nullptr;
+    QLabel*         m_hora              = nullptr;
+
+
+
 
 };
 #endif // VISTA_H

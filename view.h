@@ -80,10 +80,21 @@ public:
 // =========================================================================
 // FUNCIONES PUBLICAS
 // =========================================================================
-    void initUi();
-    void nuevoProyecto();
-    void abrirProyecto();
-    void cerrarProyecto();
+    void            initUi();
+
+    void            nuevoProyecto();
+    void            abrirProyecto();
+    void            cerrarProyecto();
+
+    Estado          getEstado();
+    QString         getAtomoActivo();
+    QVector<Atomo>  getListaAtomos();
+    QVector<Enlace> getLIstaEnlaces();
+    void            limpiarLienzo();
+    void            setElementoActivo(QString simbolo);
+    void            setModoEditor(ModoEditor modo);
+    void            setClick(QVector3D posClick);
+
 
 
 signals:
@@ -91,21 +102,31 @@ signals:
 // LA SEÑAL: View avisa al exterior transmitiendo su estado interno
 // =========================================================================
     void actualizarVista(Estado estado);
+    void actualizarLienzo();
 
 
 private:
 // =========================================================================
 // FUNCIONES PRIVADAS
 // =========================================================================
-    void resetValores();
+    void    resetValores();
+    void    notificaEstado();
+    void    procesarClickSeleccion(QVector3D posClick);
+    void    procesarClickDibujo(QVector3D posClick);
+    void    procesarClickCrearEnlace(QVector3D posClick);
+    void    procesarClickRotacion(QVector3D posClick);
+    int     getIdAtomoFromPosicion(QVector3D posClick);
+
 
 // =========================================================================
 // ZONA: ALMACÉN FÍSICO DE VARIABLES PRIVADAS (ESTADOS Y MEMORIA EN RAM)
 // =========================================================================
-
     Estado              m_estado;
     QVector<Atomo>      m_listaAtomos;
     QVector<Enlace>     m_listaEnlaces;
+    int                 m_contadorId;
+    QString             m_atomoActivo;
+    QString             m_rutaArchivoActual;
 
 
 };

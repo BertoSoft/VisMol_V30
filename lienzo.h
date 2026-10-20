@@ -1,8 +1,11 @@
 #ifndef LIENZO_H
 #define LIENZO_H
 
+#include "view.h"
+
+
 #include <QGraphicsScene>
-#include <QGraphicsSceneMouseEvent> // Añadido para los eventos del ratón
+#include <QGraphicsView>
 #include <QObject>
 #include <QVector3D>
 
@@ -11,20 +14,46 @@
 // CLASE PRINCIPAL: LIENZO, ENCARGADA DEL DIBUJO EN VISOR MOLECULA
 // =========================================================================
 
-class Lienzo : public QGraphicsScene {
+class Lienzo : public QGraphicsView {
     Q_OBJECT
 
 public:
-    explicit Lienzo(QObject *parent = nullptr);
+    explicit Lienzo(QWidget *parent = nullptr);
     ~Lienzo() override;
 
-protected:
+
+// =========================================================================
+// BLOQUE: MÉTODOS PUBLICOS
+// =========================================================================
+
+    void initView(View* view);
+    void renderLienzo();
+
+
 // =========================================================================
 // BLOQUE: MÉTODOS PROTEGIDOS DE INTERACCION CON EL RATON
 // =========================================================================
-    void mousePressEvent(QGraphicsSceneMouseEvent *event) override;
-    void mouseMoveEvent(QGraphicsSceneMouseEvent *event) override;
-    void mouseReleaseEvent(QGraphicsSceneMouseEvent *event) override;
+protected:
+
+    void mousePressEvent(QMouseEvent *event) override;
+    void mouseMoveEvent(QMouseEvent *event) override;
+    void mouseReleaseEvent(QMouseEvent *event) override;
+
+// =========================================================================
+// BLOQUE: MÉTODOS PRIVADOS
+// =========================================================================
+private:
+
+    void renderAtomos();
+    void renderEnlaces();
+
+    QGraphicsScene*     m_escena    = nullptr;
+    View*               m_view      = nullptr;
+
 };
+
+
+
+
 
 #endif // LIENZO_H

@@ -13,7 +13,7 @@
   <property name="windowTitle">
    <string/>
   </property>
-  <widget class="QWidget" name="centralwidget">
+  <widget class="QWidget" name="centralWidget">
    <property name="sizePolicy">
     <sizepolicy hsizetype="Expanding" vsizetype="Preferred">
      <horstretch>0</horstretch>
@@ -317,7 +317,7 @@
      </widget>
     </item>
     <item>
-     <widget class="QGraphicsView" name="visorMolecular">
+     <widget class="Lienzo" name="visorMolecular">
       <property name="sizePolicy">
        <sizepolicy hsizetype="Preferred" vsizetype="Preferred">
         <horstretch>0</horstretch>
@@ -559,7 +559,7 @@
    <addaction name="menuEditar"/>
    <addaction name="menuCalculo"/>
   </widget>
-  <widget class="QStatusBar" name="statusbar"/>
+  <widget class="QStatusBar" name="barraEstado"/>
   <widget class="QToolBar" name="barraSuperior">
    <property name="windowTitle">
     <string>toolBar</string>
@@ -722,6 +722,13 @@
    </property>
   </action>
  </widget>
+ <customwidgets>
+  <customwidget>
+   <class>Lienzo</class>
+   <extends>QGraphicsView</extends>
+   <header>lienzo.h</header>
+  </customwidget>
+ </customwidgets>
  <resources>
   <include location="iconos.qrc"/>
  </resources>

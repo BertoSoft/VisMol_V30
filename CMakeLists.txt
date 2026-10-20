@@ -21,6 +21,8 @@ qt_add_executable(VisMol_V30
     view.h view.cpp             # Mantener el archivo aquí es correcto
 )
 
+target_include_directories(VisMol_V30 PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+
 target_link_libraries(VisMol_V30
     PRIVATE
         Qt::Core
