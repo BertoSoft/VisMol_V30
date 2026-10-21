@@ -36,7 +36,6 @@ void View::setClick(const QVector3D& posClick){
     default:
         return;
     }
-
 }
 
 void View::nuevoProyecto(){
@@ -102,34 +101,48 @@ void View::setModoEditor(ModoEditor modo){
     notificaEstado();
 }
 
+void View::deshacer(){
+    atrasHistorial();
+}
+
+void View::rehacer(){
+    adelanteHistorial();
+}
+
 // =========================================================================
 // FUNCIONES PRIVADAS
 // =========================================================================
 
 void View::resetValores(){
+
+    // 1.- listas de datos
     m_listaAtomos.clear();
     m_listaEnlaces.clear();
 
+    // 2.- Valores de View
     m_atomoActivo         = "";
     m_idAtomoSeleccionado = -1;
     m_contadorId          = 0;
     m_rutaArchivoActual   = "";
     m_comentario          = "";
     m_argumentos          = "";
-
     m_ultimaPosRat        = QVector3D(-10000.0f, -10000.0f, -10000.0f);
 
-    // Reiniciamos las variables de control histórico de disco
+    // 3.- Reiniciamos las variables de control histórico de disco
     m_numeroAtomos        = 0;
     m_numeroEnlaces       = 0;
 
-    // Estado base inicial por defecto (Inactivo)
+    // 4.- Estado base inicial por defecto (Inactivo)
     m_estado.modoEditor   = ModoEditor::ModoSeleccion;
     m_estado.estaEmpezado = false;
     m_estado.estaVacio    = true;
     m_estado.estaGuardado = false;
     m_estado.estaModificado = false;
     m_estado.hayProceso   = false;
+
+    // 5.- Limpieza total del historial físico
+    m_historialDeshacer.clear();
+    m_historialRehacer.clear();
 }
 
 void View::notificaEstado(){
@@ -182,6 +195,9 @@ void View::procesarClickSeleccion(const QVector3D& posClick){
         // =========================================================================
         if (deltaX > 3.0f || deltaY > 3.0f) {
             if (!m_listaAtomos.isEmpty()) {
+
+                setEstadoHistorial();
+
                 for (Atomo& atomo : m_listaAtomos) {
                     atomo.posicion += QVector3D(deltaX, deltaY, 0.0f);
                 }
@@ -197,6 +213,7 @@ void View::procesarClickDibujo(const QVector3D& posClick){
 
     // si has pulsado en el vacio creamos un atomo
     if(getIdAtomoFromPosicion(posClick) < 0){
+        setEstadoHistorial();
         Atomo nuevoAtomo;
 
         nuevoAtomo.id       = ++m_contadorId;
@@ -229,7 +246,7 @@ void View::procesarClickCrearEnlace(const QVector3D& posClick){
             }
         }
 
-        // Si existe miramos si ya está saturado en su estado basal libre
+        // Si existe, miramos si ya está saturado en su estado basal libre
         if(existe){
             int enlacesActuales = getEnlaces(atomo1);
             int maxEnlaces      = Atomos::getMaxValencia(atomo1.simbolo);
@@ -276,6 +293,7 @@ void View::procesarClickCrearEnlace(const QVector3D& posClick){
 
             // Validamos si la valencia química restante de ambos admite subir el orden
             if(isEnlacePosible(atomo1, atomo2)){
+                setEstadoHistorial();
                 enlace.orden++;
             }
 
@@ -286,6 +304,7 @@ void View::procesarClickCrearEnlace(const QVector3D& posClick){
 
     // 2.- Si el enlace NO EXISTE, intentamos crearlo desde cero como un enlace simple (Orden 1)
     if(isEnlacePosible(atomo1, atomo2)){
+        setEstadoHistorial();
         Enlace nuevoEnlace;
 
         nuevoEnlace.id_atomo1 = idAtomo1;
@@ -358,4 +377,48 @@ bool View::isEnlacePosible(const Atomo& atomo1, const Atomo& atomo2){
         }
     }
     return true;
+}
+
+void View::setEstadoHistorial(){
+    // 1. Creamos la foto con el estado exacto actual en memoria RAM
+    FotoActual foto;
+    foto.listaAtomos  = m_listaAtomos;
+    foto.listaEnlaces = m_listaEnlaces;
+
+    // 2. Guardamos la foto en la pila de Deshacer
+    m_historialDeshacer.push(foto);
+
+    // 3. ¡IMPORTANTE! Limpiamos el futuro (Rehacer).
+    // Si el usuario dibuja o enlaza algo nuevo, ya no puede ir "hacia adelante"
+    m_historialRehacer.clear();
+}
+
+void View::atrasHistorial(){
+    if(m_historialDeshacer.isEmpty()) return;
+
+    FotoActual ahora;
+    ahora.listaAtomos  = m_listaAtomos;
+    ahora.listaEnlaces = m_listaEnlaces;
+    m_historialRehacer.push(ahora);
+
+    FotoActual antes = m_historialDeshacer.pop();
+    m_listaAtomos   = antes.listaAtomos;
+    m_listaEnlaces  = antes.listaEnlaces;
+
+    notificaEstado();
+}
+
+void View::adelanteHistorial(){
+    if(m_historialRehacer.isEmpty()) return;
+
+    FotoActual ahora;
+    ahora.listaAtomos  = m_listaAtomos;
+    ahora.listaEnlaces = m_listaEnlaces;
+    m_historialDeshacer.push(ahora);
+
+    FotoActual despues = m_historialRehacer.pop();
+    m_listaAtomos   = despues.listaAtomos;
+    m_listaEnlaces  = despues.listaEnlaces;
+
+    notificaEstado();
 }

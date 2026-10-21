@@ -3,6 +3,7 @@
 
 #include <QObject>
 #include <QVector3D>
+#include <QStack>
 
 // =========================================================================
 // ESTRUCTURAS DE DATOS ORIGINALES
@@ -96,6 +97,8 @@ public:
     void            setModoEditor(ModoEditor modo);
     void            setClick(const QVector3D& posClick);
 
+    void            deshacer();
+    void            rehacer();
 
 
 signals:
@@ -119,6 +122,10 @@ private:
     int     getIdAtomoFromPosicion(const QVector3D& posClick);
     int     getEnlaces(const Atomo& atomo);
     bool    isEnlacePosible(const Atomo& atomo1, const Atomo& atomo2);
+    void    setEstadoHistorial();
+    void    atrasHistorial();
+    void    adelanteHistorial();
+
 
 
 // =========================================================================
@@ -130,16 +137,22 @@ private:
 
     int                 m_idAtomoSeleccionado;
     QVector3D           m_ultimaPosRat;
-
     int                 m_contadorId;
     QString             m_atomoActivo;
-
     QString             m_comentario;
     QString             m_argumentos;
     QString             m_rutaArchivoActual;
 
     int                 m_numeroAtomos;
     int                 m_numeroEnlaces;
+
+    struct FotoActual{
+        QVector<Atomo>      listaAtomos;
+        QVector<Enlace>     listaEnlaces;
+    };
+
+    QStack<FotoActual>  m_historialDeshacer;
+    QStack<FotoActual>  m_historialRehacer;
 
 
 };
