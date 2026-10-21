@@ -89,11 +89,12 @@ public:
     Estado          getEstado();
     QString         getAtomoActivo();
     QVector<Atomo>  getListaAtomos();
-    QVector<Enlace> getLIstaEnlaces();
+    QVector<Enlace> getListaEnlaces();
+    int             getIdAtomoSeleccionado();
     void            limpiarLienzo();
-    void            setElementoActivo(QString simbolo);
+    void            setElementoActivo(const QString& simbolo);
     void            setModoEditor(ModoEditor modo);
-    void            setClick(QVector3D posClick);
+    void            setClick(const QVector3D& posClick);
 
 
 
@@ -101,7 +102,7 @@ signals:
 // =========================================================================
 // LA SEÑAL: View avisa al exterior transmitiendo su estado interno
 // =========================================================================
-    void actualizarVista(Estado estado);
+    void actualizarVista(const Estado& estado);
     void actualizarLienzo();
 
 
@@ -111,11 +112,13 @@ private:
 // =========================================================================
     void    resetValores();
     void    notificaEstado();
-    void    procesarClickSeleccion(QVector3D posClick);
-    void    procesarClickDibujo(QVector3D posClick);
-    void    procesarClickCrearEnlace(QVector3D posClick);
-    void    procesarClickRotacion(QVector3D posClick);
-    int     getIdAtomoFromPosicion(QVector3D posClick);
+    void    procesarClickSeleccion(const QVector3D& posClick);
+    void    procesarClickDibujo(const QVector3D& posClick);
+    void    procesarClickCrearEnlace(const QVector3D& posClick);
+    void    procesarClickRotacion(const QVector3D& posClick);
+    int     getIdAtomoFromPosicion(const QVector3D& posClick);
+    int     getEnlaces(const Atomo& atomo);
+    bool    isEnlacePosible(const Atomo& atomo1, const Atomo& atomo2);
 
 
 // =========================================================================
@@ -124,9 +127,19 @@ private:
     Estado              m_estado;
     QVector<Atomo>      m_listaAtomos;
     QVector<Enlace>     m_listaEnlaces;
+
+    int                 m_idAtomoSeleccionado;
+    QVector3D           m_ultimaPosRat;
+
     int                 m_contadorId;
     QString             m_atomoActivo;
+
+    QString             m_comentario;
+    QString             m_argumentos;
     QString             m_rutaArchivoActual;
+
+    int                 m_numeroAtomos;
+    int                 m_numeroEnlaces;
 
 
 };

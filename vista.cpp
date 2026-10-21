@@ -87,48 +87,58 @@ void Vista::initBarraEstado(){
 //======================================================================================
 void Vista::actualizarUi(Estado estado){
 
-    // 1.- Botones del menu Archivo
+    // 0.- Estado base del Visor Molecular y la Barra Superior
+    ui->visorMolecular->setEnabled(estado.estaEmpezado);
+
+    // Bloque de seguridad: Forzar que las acciones de inicio estén SIEMPRE usables en barra y menús
+    ui->actionNuevo->setEnabled(true);
+    ui->actionAbrir->setEnabled(true);
+    ui->actionSalir->setEnabled(true);
+
+    // 1.- Botones del menú y barra de Archivo
     ui->actionCerrar->setEnabled(estado.estaEmpezado);
-    ui->actionGuardar->setEnabled(!estado.estaVacio);
-    ui->actionGuardarComo->setEnabled(!estado.estaVacio);
+    ui->actionGuardar->setEnabled(estado.estaEmpezado && !estado.estaVacio);
+    ui->actionGuardarComo->setEnabled(estado.estaEmpezado && !estado.estaVacio);
 
-    // 2.- Botones del menu Edicion
-    ui->actionDeshacer->setEnabled(false);
-    ui->actionRehacer->setEnabled(false);
-    ui->actionComentarioProyecto->setEnabled(!estado.estaVacio);
-    ui->actionLimpiarLienzo->setEnabled(!estado.estaVacio);
+    // 2.- Botones del menú y barra de Edición
+    ui->actionDeshacer->setEnabled(false); // Reservado para el futuro
+    ui->actionRehacer->setEnabled(false);  // Reservado para el futuro
+    ui->actionComentarioProyecto->setEnabled(estado.estaEmpezado && !estado.estaVacio);
+    ui->actionLimpiarLienzo->setEnabled(estado.estaEmpezado && !estado.estaVacio);
 
-    // 3.- Botones de Calculo
+    // 3.- Botones de Cálculo QM (Menú superior)
     ui->actionConfigurarLanzar->setEnabled(estado.estaEmpezado);
-    ui->actionDetenerSimulacion->setEnabled(estado.hayProceso);
+    ui->actionDetenerSimulacion->setEnabled(estado.estaEmpezado && estado.hayProceso);
 
-    // 4.- barra elementos
+    // 4.- Barra lateral izquierda (Herramientas de edición y Elementos)
     if(estado.estaEmpezado){
+        ui->barraIzda->setEnabled(true);
         ui->btnSeleccion->setChecked(estado.modoEditor == ModoEditor::ModoSeleccion);
         ui->btnModoEnlace->setChecked(estado.modoEditor == ModoEditor::ModoCrearEnlace);
         ui->btnModoRotar->setChecked(estado.modoEditor == ModoEditor::ModoRotacion3D);
-        ui->barraIzda->setEnabled(estado.estaEmpezado);
     }
     else{
+        ui->barraIzda->setEnabled(false);
         m_grupoIzdo->setExclusive(false);
         if(m_grupoIzdo->checkedButton()){
             m_grupoIzdo->checkedButton()->setChecked(false);
         }
         m_grupoIzdo->setExclusive(true);
-        ui->barraIzda->setEnabled(false);
     }
 
-    // 5.- Barra derecha
-    ui->barraDerecha->setEnabled(!estado.estaVacio);
-    if(!estado.estaVacio){
+    // 5.- Barra lateral derecha (Configuración cuántica y Control)
+    // Solo se activa si el proyecto está empezado Y además tiene átomos en pantalla
+    bool usarPanelDerecho = estado.estaEmpezado && !estado.estaVacio;
+    ui->barraDerecha->setEnabled(usarPanelDerecho);
+
+    if(usarPanelDerecho){
         ui->btnLanzar->setEnabled(!estado.hayProceso);
         ui->btnAbortar->setEnabled(estado.hayProceso);
-
         ui->frameEjecucion->setEnabled(!estado.hayProceso);
         ui->frameSoftware->setEnabled(!estado.hayProceso);
     }
 
-    // 6.- Barra estado
+    // 6.- Actualización de la Barra de Estado inferior
     if(!estado.estaEmpezado){
         m_lblMesaje->setText(tr(" Listo. Cree un nuevo proyecto o abra un archivo para comenzar."));
     }
@@ -145,13 +155,11 @@ void Vista::actualizarUi(Estado estado){
             txt = tr(" Modo Rotación 3D 🔄 | Arrastre el lienzo para orbitar la molécula.");
             break;
         case ModoDibujo:
-            // Usamos el dato inyectado en el estado
             txt = tr(" Modo Dibujo 🧪 | Añadiendo elemento: %1 (Clic en lienzo para colocar)").arg(m_view->getAtomoActivo());
             break;
         }
         m_lblMesaje->setText(txt);
     }
-
 }
 
 void Vista::setEstilos(){
@@ -188,6 +196,10 @@ void Vista::setEstilos(){
         "    background-color: #020617;"
         "    border: 2px solid #1E293B;"
         "    border-radius: 6px;"
+        "}"
+        "QGraphicsView#visorMolecular:disabled {"
+        "    background-color: #1E293B;" /* Fondo grisáceo oscuro similar a las barras */
+        "    border: 2px solid #334155;" /* Borde atenuado */
         "}"
         "QFrame#barraIzda {"
         "    background-color: #1E293B;"
@@ -326,7 +338,9 @@ void Vista::on_actionNuevo_triggered(){
 }
 
 void Vista::on_actionCerrar_triggered(){
-    m_view->cerrarProyecto();
+    if(sePuedeCerrar()){
+        m_view->cerrarProyecto();
+    }
 }
 
 void Vista::on_actionAbrir_triggered(){
