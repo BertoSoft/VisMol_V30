@@ -38,6 +38,89 @@ void View::setClick(const QVector3D& posClick){
     }
 }
 
+void View::setClickDerecho(const QVector3D& posClick){
+
+    // 1. Buscamos primero si hay un átomo bajo el cursor
+    int idAtomo     = getIdAtomoFromPosicion(posClick);
+    int idEnlace    = -1; // De momento mientras no medimos distancias
+
+    // 2. Si NO hay ningún átomo, buscamos si el usuario ha pulsado sobre una línea (enlace)
+    if (idAtomo < 0) {
+        const float TOLERANCIA_CLIC_ENLACE = 12.0f; // Margen de error en píxeles/unidades para acertar a la línea
+        float distanciaMinima = TOLERANCIA_CLIC_ENLACE;
+
+        for (int i = 0; i < m_listaEnlaces.size(); ++i) {
+            const Enlace& enlace = m_listaEnlaces[i];
+
+            // Recuperamos las coordenadas de los dos átomos que forman el enlace
+            QVector3D pos1, pos2;
+            bool e1 = false, e2 = false;
+            for (const Atomo& a : m_listaAtomos) {
+                if (a.id == enlace.id_atomo1) { pos1 = a.posicion; e1 = true; }
+                if (a.id == enlace.id_atomo2) { pos2 = a.posicion; e2 = true; }
+                if (e1 && e2) break;
+            }
+
+            if (e1 && e2) {
+                // Medimos la distancia geométrica desde el clic hasta este segmento de enlace
+                float dist = getDistanciaPuntoSegmento(posClick, pos1, pos2);
+                if (dist < distanciaMinima) {
+                    distanciaMinima = dist;
+                    idEnlace = i; // Guardamos el índice del enlace más cercano
+                }
+            }
+        }
+    }
+
+
+    if(idAtomo>=0 || idEnlace>=0){
+        emit setMenuEliminar(idAtomo, idEnlace);
+    }
+}
+
+void View::eliminarAtomo(int idAtomo) {
+    if (idAtomo < 0) return;
+
+    // 1. Guardamos una foto en el historial antes de romper nada
+    setEstadoHistorial();
+
+    // 2. Eliminamos todos los enlaces asociados a este átomo (por seguridad física/química)
+    for (int i = m_listaEnlaces.size() - 1; i >= 0; --i) {
+        if (m_listaEnlaces[i].id_atomo1 == idAtomo || m_listaEnlaces[i].id_atomo2 == idAtomo) {
+            m_listaEnlaces.removeAt(i);
+        }
+    }
+
+    // 3. Eliminamos el átomo de la lista
+    for (int i = 0; i < m_listaAtomos.size(); ++i) {
+        if (m_listaAtomos[i].id == idAtomo) {
+            m_listaAtomos.removeAt(i);
+            break;
+        }
+    }
+
+    // 4. Refrescamos todo el sistema
+    notificaEstado();
+}
+
+void View::eliminarEnlace(int idEnlace) {
+
+    // Guarda la memoria
+    setEstadoHistorial();
+
+    // Buscamos el enlace por las identificaciones de sus átomos (o si tuviera un id único)
+    // En tu estructura actual, si pasamos el índice directo del vector de enlaces:
+    if (idEnlace >= 0 && idEnlace < m_listaEnlaces.size()) {
+        m_listaEnlaces.removeAt(idEnlace);
+
+        // ¡NUEVO!: Si se elimina un enlace por el menú contextual, limpiamos la selección por seguridad
+        m_idAtomoSeleccionado = -1;
+
+        // Notificamos e invocamos al lienzo para que repinte las líneas inmediatamente
+        notificaEstado();
+    }
+}
+
 void View::nuevoProyecto(){
     limpiarLienzo(); // ya actualiza m_estado
     m_estado.estaEmpezado = true;
@@ -133,12 +216,14 @@ void View::resetValores(){
     m_numeroEnlaces       = 0;
 
     // 4.- Estado base inicial por defecto (Inactivo)
-    m_estado.modoEditor   = ModoEditor::ModoSeleccion;
-    m_estado.estaEmpezado = false;
-    m_estado.estaVacio    = true;
-    m_estado.estaGuardado = false;
+    m_estado.modoEditor     = ModoEditor::ModoSeleccion;
+    m_estado.estaEmpezado   = false;
+    m_estado.estaVacio      = true;
+    m_estado.estaGuardado   = false;
     m_estado.estaModificado = false;
-    m_estado.hayProceso   = false;
+    m_estado.hayProceso     = false;
+    m_estado.hayDeshacer    = false;
+    m_estado.hayRehacer     = false;
 
     // 5.- Limpieza total del historial físico
     m_historialDeshacer.clear();
@@ -149,7 +234,11 @@ void View::notificaEstado(){
     // 1. Detección automática de vacío
     m_estado.estaVacio = m_listaAtomos.isEmpty() && m_listaEnlaces.isEmpty();
 
-    // 2. Detección automática de modificación (Comparación con el historial guardado)
+    // 2. Control de historial para los botones de la UI
+    m_estado.hayDeshacer = !m_historialDeshacer.isEmpty();
+    m_estado.hayRehacer  = !m_historialRehacer.isEmpty();
+
+    // 3. Detección automática de modificación (Comparación con el historial guardado)
     if (!m_estado.estaEmpezado) {
         m_estado.estaModificado = false;
         m_estado.estaGuardado   = false;
@@ -333,6 +422,25 @@ int View::getIdAtomoFromPosicion(const QVector3D& posClick){
         }
     }
     return -1;
+}
+
+float View::getDistanciaPuntoSegmento(const QVector3D& posClick, const QVector3D& pos1, const QVector3D& pos2){
+    QVector3D ab = pos2 - pos1;
+    QVector3D ap = posClick - pos1;
+
+    // Calcular la proyección del punto sobre el vector del segmento
+    float longitudAbCuadrada = ab.lengthSquared();
+    if (longitudAbCuadrada < 0.0001f) return pos1.distanceToPoint(posClick); // Evitar división por cero
+
+    // Factor de proyección (t) acotado entre 0.0 y 1.0 para mantenerse dentro del segmento
+    float t = QVector3D::dotProduct(ap, ab) / longitudAbCuadrada;
+    t = qMax(0.0f, qMin(1.0f, t));
+
+    // El punto más cercano sobre el segmento de recta
+    QVector3D puntoCercano = pos1 + t * ab;
+
+    // Devolvemos la distancia real entre el clic y ese punto cercano
+    return posClick.distanceToPoint(puntoCercano);
 }
 
 int View::getEnlaces(const Atomo& atomo){

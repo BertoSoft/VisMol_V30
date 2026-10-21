@@ -83,7 +83,7 @@ void Vista::initBarraEstado(){
 }
 
 //======================================================================================
-// Funciones Privadas
+// Funciones SLOT Publicos
 //======================================================================================
 void Vista::actualizarUi(Estado estado){
 
@@ -97,12 +97,12 @@ void Vista::actualizarUi(Estado estado){
 
     // 1.- Botones del menú y barra de Archivo
     ui->actionCerrar->setEnabled(estado.estaEmpezado);
-    ui->actionGuardar->setEnabled(estado.estaEmpezado && !estado.estaVacio);
+    ui->actionGuardar->setEnabled(estado.estaEmpezado);
     ui->actionGuardarComo->setEnabled(estado.estaEmpezado && !estado.estaVacio);
 
     // 2.- Botones del menú y barra de Edición
-    ui->actionDeshacer->setEnabled(false); // Reservado para el futuro
-    ui->actionRehacer->setEnabled(false);  // Reservado para el futuro
+    ui->actionDeshacer->setEnabled(estado.hayDeshacer);
+    ui->actionRehacer->setEnabled(estado.hayRehacer);
     ui->actionComentarioProyecto->setEnabled(estado.estaEmpezado && !estado.estaVacio);
     ui->actionLimpiarLienzo->setEnabled(estado.estaEmpezado && !estado.estaVacio);
 
@@ -161,6 +161,37 @@ void Vista::actualizarUi(Estado estado){
         m_lblMesaje->setText(txt);
     }
 }
+
+void Vista::setMenuBotonDerecho(int idAtomo, int idEnlace){
+    QMenu menuDerecho(this);
+
+    // CASO A: El clic derecho cayó sobre un átomo válido
+    if (idAtomo >= 0) {
+        QAction* actEliminarAtomo = menuDerecho.addAction(tr("Eliminar Átomo"));
+        QAction* accionSeleccionada = menuDerecho.exec(QCursor::pos());
+
+        if (accionSeleccionada == actEliminarAtomo) {
+            m_view->eliminarAtomo(idAtomo); // El cerebro limpia la memoria
+        }
+        return; // ¡CRUCIAL! Salimos inmediatamente del método para evitar lecturas de basura
+    }
+
+    // CASO B: El clic derecho cayó sobre un enlace limpio
+    if (idEnlace >= 0) {
+        QAction* actEliminarEnlace = menuDerecho.addAction(tr("Eliminar Enlace"));
+        QAction* accionSeleccionada = menuDerecho.exec(QCursor::pos());
+
+        if (accionSeleccionada == actEliminarEnlace) {
+            m_view->eliminarEnlace(idEnlace);
+        }
+        return;
+    }
+}
+
+
+//======================================================================================
+// Funciones Privadas
+//======================================================================================
 
 void Vista::setEstilos(){
     QString qss =
@@ -381,5 +412,13 @@ void Vista::on_btnModoEnlace_clicked(){
 
 void Vista::on_btnModoRotar_clicked(){
     m_view->setModoEditor(ModoRotacion3D);
+}
+
+void Vista::on_actionDeshacer_triggered(){
+    m_view->deshacer();
+}
+
+void Vista::on_actionRehacer_triggered(){
+    m_view->rehacer();
 }
 

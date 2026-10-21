@@ -192,7 +192,7 @@ void Lienzo::mousePressEvent(QMouseEvent *mouseEv){
 
     m_ultimaPosRat = mouseEv->pos();
 
-    // Si no
+    // Si no estamos en modoRotacion
     if(m_view->getEstado().modoEditor != ModoRotacion3D) {
         // Capturamos el punto exacto en píxeles puros de la escena
         QPointF posClick = this->mapToScene(mouseEv->pos());
@@ -202,7 +202,7 @@ void Lienzo::mousePressEvent(QMouseEvent *mouseEv){
             m_view->setClick(QVector3D(posClick.x(), posClick.y(), 0.0f));
         }
         if(mouseEv->button() == Qt::RightButton){
-            //m_view->setClickDerecho(QVector3D(posClick.x(), posClick.y(), 0.0f));
+            m_view->setClickDerecho(QVector3D(posClick.x(), posClick.y(), 0.0f));
         }
     }
 

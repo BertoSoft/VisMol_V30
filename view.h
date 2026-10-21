@@ -64,6 +64,8 @@ struct Estado {
     bool        estaGuardado;
     bool        estaModificado;
     bool        hayProceso;
+    bool        hayDeshacer;
+    bool        hayRehacer;
 };
 
 
@@ -96,6 +98,9 @@ public:
     void            setElementoActivo(const QString& simbolo);
     void            setModoEditor(ModoEditor modo);
     void            setClick(const QVector3D& posClick);
+    void            setClickDerecho(const QVector3D& posClick);
+    void            eliminarAtomo(int idAtomo);
+    void            eliminarEnlace(int idEnlace);
 
     void            deshacer();
     void            rehacer();
@@ -107,6 +112,7 @@ signals:
 // =========================================================================
     void actualizarVista(const Estado& estado);
     void actualizarLienzo();
+    void setMenuEliminar(int idAtomo, int idEnlace);
 
 
 private:
@@ -120,6 +126,7 @@ private:
     void    procesarClickCrearEnlace(const QVector3D& posClick);
     void    procesarClickRotacion(const QVector3D& posClick);
     int     getIdAtomoFromPosicion(const QVector3D& posClick);
+    float   getDistanciaPuntoSegmento(const QVector3D& posClick, const QVector3D& pos1, const QVector3D& pos2);
     int     getEnlaces(const Atomo& atomo);
     bool    isEnlacePosible(const Atomo& atomo1, const Atomo& atomo2);
     void    setEstadoHistorial();

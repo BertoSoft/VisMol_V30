@@ -27,6 +27,7 @@ int main(int argc, char *argv[])
     //=======================================================================================
     QObject::connect(view, &View::actualizarVista, vista, &Vista::actualizarUi);
     QObject::connect(view, &View::actualizarLienzo, lienzo, &Lienzo::renderLienzo);
+    QObject::connect(view, &View::setMenuEliminar, vista, &Vista::setMenuBotonDerecho);
 
 
     view->initUi(); //

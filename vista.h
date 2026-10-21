@@ -37,6 +37,7 @@ public:
 public slots:
     // Slots de sincronización descendente que llamará MoleculaView mediante señales
     void actualizarUi(Estado estado);
+    void setMenuBotonDerecho(int idAtomo, int idEnlace);
 
 
 private slots:
@@ -68,6 +69,10 @@ private slots:
     void on_btnModoEnlace_clicked();
 
     void on_btnModoRotar_clicked();
+
+    void on_actionDeshacer_triggered();
+
+    void on_actionRehacer_triggered();
 
 private:
     Ui::Vista *ui;
