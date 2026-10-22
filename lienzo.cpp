@@ -86,7 +86,6 @@ void Lienzo::renderAtomos(){
         elipse->setPen(QPen(color.darker(150), 1.5));
 
         elipse->setZValue(1);
-        m_escena->addItem(elipse);
 
         // Círculo de Átomo Seleccionado (Anillo azul)
         if (m_view && m_view->getIdAtomoSeleccionado() == atomo.id) {
@@ -192,7 +191,7 @@ void Lienzo::mousePressEvent(QMouseEvent *mouseEv){
 
     m_ultimaPosRat = mouseEv->pos();
 
-    // Si no estamos en modoRotacion
+    // Si no
     if(m_view->getEstado().modoEditor != ModoRotacion3D) {
         // Capturamos el punto exacto en píxeles puros de la escena
         QPointF posClick = this->mapToScene(mouseEv->pos());

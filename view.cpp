@@ -1,5 +1,11 @@
 #include "view.h"
 #include "atomos.h"
+#include "datos.h"
+
+#include <QProcess>
+#include <QFile>
+#include <QFileInfo>
+#include <QDir>
 
 View::View(QObject *parent)
     : QObject(parent){
@@ -16,6 +22,8 @@ View::~View(){
 // =========================================================================
 void View::initUi(){
     resetValores();
+    m_estado.estaEmpezado = false;
+
     emit actualizarVista(m_estado);
 }
 
@@ -127,21 +135,140 @@ void View::nuevoProyecto(){
     notificaEstado();
 }
 
-void View::abrirProyecto(){
-    limpiarLienzo(); // ya actualiza m_estado
+void View::abrirProyecto(const QString& ruta){
+    if (ruta.isEmpty()) return;
 
+    // 1. Limpieza protocolaria antes de cargar nuevos datos
+    limpiarLienzo();
 
+    // 2. Llamada delegada a la persistencia pura pasándole las referencias de la RAM
+    bool exito = Datos::abrirVisMol(ruta, m_listaAtomos, m_listaEnlaces, m_comentario);
 
+    if (exito) {
+        // 3. Buscar el ID más alto cargado para que el contador incremental no colisione
+        int maxIdDetectado = 0;
+        for (const Atomo& a : m_listaAtomos) {
+            if (a.id > maxIdDetectado) {
+                maxIdDetectado = a.id;
+            }
+        }
 
+        // 4. Sincronizar el estado del motor y de almacenamiento en disco
+        m_rutaArchivoActual = ruta;
+        m_contadorId        = maxIdDetectado;
+        m_numeroAtomos      = m_listaAtomos.size();  // Apaga el asterisco '*' de modificación
+        m_numeroEnlaces     = m_listaEnlaces.size(); // Apaga el asterisco '*' de modificación
 
-    m_estado.estaEmpezado = true;
+        m_estado.modoEditor   = ModoEditor::ModoSeleccion;
+        m_estado.estaEmpezado = true;
+    } else {
+        // Si el archivo falla o está corrupto, nos aseguramos de que el sistema quede cerrado
+        m_estado.estaEmpezado = false;
+    }
+
+    // 5. Notificar de inmediato al Lienzo y a la Vista
+    m_estado.estaModificado = false;
     notificaEstado();
+}
+
+void View::guardarProyecto(){
+    if (m_rutaArchivoActual.isEmpty()) return;
+
+    // Llamamos a DatosIo pasándole los datos puros
+    bool exito = Datos::guardarVisMol(m_rutaArchivoActual, m_listaAtomos, m_listaEnlaces, m_comentario);
+
+    if (exito) {
+        // Sincronizamos el conteo histórico para apagar el asterisco '*'
+        m_numeroAtomos  = m_listaAtomos.size();
+        m_numeroEnlaces = m_listaEnlaces.size();
+
+        m_estado.estaModificado = false;
+        m_estado.estaGuardado   = true; // ◄ Forzamos el estado guardado con éxito
+        notificaEstado();
+    }
 }
 
 void View::cerrarProyecto(){
     limpiarLienzo();
     m_estado.estaEmpezado = false;
     notificaEstado();
+}
+
+void View::optGeometrica(){
+    if (m_listaAtomos.isEmpty()) return;
+
+    // 1. Encendemos la bandera de proceso activo en la interfaz
+    m_estado.hayProceso = true;
+    notificaEstado();
+
+    // 2. Extraemos el nombre base directamente porque m_rutaArchivoActual no es nula
+    QString nombreBase = QFileInfo(m_rutaArchivoActual).baseName();
+
+    // Definimos las rutas en el directorio temporal
+    QString rutaInputMop   = QDir::tempPath() + "/" + nombreBase + ".mop";
+    QString rutaCopiaVisMol = QDir::tempPath() + "/" + nombreBase + ".vismol";
+
+    // ─── PASO A: Crear la copia .vismol temporal para salvaguardar los enlaces ───
+    Datos::guardarVisMol(rutaCopiaVisMol, m_listaAtomos, m_listaEnlaces, m_comentario);
+
+    // ─── PASO B: Crear el archivo de entrada .mop para MOPAC ───
+    QFile archivoMop(rutaInputMop);
+    if (!archivoMop.open(QIODevice::WriteOnly | QIODevice::Text)) {
+        m_estado.hayProceso = false;
+        notificaEstado();
+        return;
+    }
+
+    QTextStream out(&archivoMop);
+    out << "PM7 OPT XYZ NOINTER\n";
+    out << "Optimizacion Geometrica Rapida - " << nombreBase << "\n\n";
+
+    // FACTOR DE ESCALA QUÍMICA: 1 Angstrom = 100 unidades/píxeles de escena
+    const float PIXELES_POR_ANGSTROM = 100.0f;
+
+    for (const Atomo& a : m_listaAtomos) {
+        // Convertimos los píxeles masivos de la pantalla a distancias reales de enlace (Å)
+        float xAngstrom = a.posicion.x() / PIXELES_POR_ANGSTROM;
+        float yAngstrom = a.posicion.y() / PIXELES_POR_ANGSTROM;
+
+        // 🎯 INYECCIÓN DE RUIDO EN Z: Generamos un pequeño desfase aleatorio entre -0.05 y +0.05 Angstroms
+        // para romper la simetría plana artificial y forzar la optimización cuántica 3D real
+        float ruidoZ = (((rand() % 100) / 100.0f) - 0.5f) * 0.1f;
+        float zAngstrom = (a.posicion.z() / PIXELES_POR_ANGSTROM) + ruidoZ;
+
+        out << a.simbolo << " "
+            << xAngstrom << " 1 "
+            << yAngstrom << " 1 "
+            << zAngstrom << " 1\n";
+    }
+    archivoMop.close();
+
+    // 3. Lanzar MOPAC en segundo plano de forma asíncrona
+    QProcess* procesoMopac = new QProcess(this);
+
+    connect(procesoMopac, QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished),
+            this, [this, procesoMopac, rutaInputMop, rutaCopiaVisMol](int exitCode, QProcess::ExitStatus exitStatus) {
+
+                QString rutaOut = rutaInputMop.section('.', 0, -2) + ".out";
+                QString rutaArc = rutaInputMop.section('.', 0, -2) + ".arc"; // ◄ Identificamos el .arc
+
+                if (exitStatus == QProcess::NormalExit && exitCode == 0) {
+                    this->cargarOutOptNoINter(rutaOut, rutaCopiaVisMol);
+                } else {
+                    m_estado.hayProceso = false;
+                    notificaEstado();
+                }
+
+                // 🎯 LIMPIEZA PROTOCOLARIA ABSOLUTA: Borrado de residuos intermedios en /tmp
+                QFile::remove(rutaInputMop);   // Elimina .mop
+                QFile::remove(rutaCopiaVisMol); // Elimina .vismol backup
+                QFile::remove(rutaOut);         // Elimina .out
+                QFile::remove(rutaArc);         // ◄ ¡CORREGIDO! Eliminamos el .arc físico
+
+                procesoMopac->deleteLater();
+            });
+
+    procesoMopac->start("mopac", QStringList() << rutaInputMop);
 }
 
 Estado View::getEstado(){
@@ -158,6 +285,14 @@ QVector<Atomo> View::getListaAtomos(){
 
 QVector<Enlace> View::getListaEnlaces(){
     return m_listaEnlaces;
+}
+
+QString View::getComentario(){
+    return m_comentario;   
+}
+
+QString View::getRutaActual(){
+    return m_rutaArchivoActual;
 }
 
 int View::getIdAtomoSeleccionado(){
@@ -182,6 +317,17 @@ void View::setModoEditor(ModoEditor modo){
     m_estado.modoEditor = modo;
 
     notificaEstado();
+}
+
+void View::setComentario(const QString& comentario){
+    m_comentario = comentario;
+
+    m_estado.estaModificado = true;
+    notificaEstado();
+}
+
+void View::setRutaActual(const QString& ruta){
+    m_rutaArchivoActual = ruta;
 }
 
 void View::deshacer(){
@@ -217,11 +363,11 @@ void View::resetValores(){
 
     // 4.- Estado base inicial por defecto (Inactivo)
     m_estado.modoEditor     = ModoEditor::ModoSeleccion;
-    m_estado.estaEmpezado   = false;
     m_estado.estaVacio      = true;
     m_estado.estaGuardado   = false;
     m_estado.estaModificado = false;
     m_estado.hayProceso     = false;
+    m_estado.estaOptimizado = false;
     m_estado.hayDeshacer    = false;
     m_estado.hayRehacer     = false;
 
@@ -246,7 +392,8 @@ void View::notificaEstado(){
     else {
         // Un proyecto está modificado si el conteo actual difiere del guardado
         bool haCambiadoContenido = (m_listaAtomos.size() != m_numeroAtomos) ||
-                                   (m_listaEnlaces.size() != m_numeroEnlaces);
+                                   (m_listaEnlaces.size() != m_numeroEnlaces) ||
+                                   m_estado.estaModificado;
 
         m_estado.estaModificado = haCambiadoContenido;
 
@@ -262,35 +409,37 @@ void View::notificaEstado(){
 void View::limpiarLienzo(){
 
     resetValores();
+    notificaEstado();
 }
 
 void View::procesarClickSeleccion(const QVector3D& posClick){
     // 1. Buscamos de forma inmediata si hay un átomo real bajo la coordenada exacta
     int idAtomoBajoCursor = getIdAtomoFromPosicion(posClick);
 
-    // ─── PRIMER CLICK, SOLO SE GUARDA ───
+    // ─── ANCLAJE ORIGINAL DE ARRASTRE INTACTO (NO SE TOCA) ───
     if (m_ultimaPosRat.x() < -5000.0f) {
         m_ultimaPosRat = posClick; // Guarda el inicio del arrastre para el lienzo
         return;
     }
 
-    // SEGUNDO CLICK, GESTIONAMOS UN SEGUNDO CLICK
     if (m_ultimaPosRat.x() >= -5000.0f) {
         float deltaX = posClick.x() - m_ultimaPosRat.x();
         float deltaY = posClick.y() - m_ultimaPosRat.y();
+        QVector3D vectorTraslacionFinal(deltaX, deltaY, 0.0f);
 
         // =========================================================================
         // ESCENARIO A: EL USUARIO ESTÁ ARRASTRANDO (MOVIMIENTO CONFIRMADO)
         // =========================================================================
-        if (deltaX > 3.0f || deltaY > 3.0f) {
+        if (vectorTraslacionFinal.length() > 3.0f) {
             if (!m_listaAtomos.isEmpty()) {
-
                 setEstadoHistorial();
-
                 for (Atomo& atomo : m_listaAtomos) {
-                    atomo.posicion += QVector3D(deltaX, deltaY, 0.0f);
+                    atomo.posicion += vectorTraslacionFinal;
                 }
 
+                m_estado.estaGuardado   = false;
+                m_estado.estaModificado = true;
+                notificaEstado();
             }
         }
         // ─── RESETEO ORIGINAL DE ARRASTRE INTACTO (NO SE TOCA) ───
@@ -528,5 +677,40 @@ void View::adelanteHistorial(){
     m_listaAtomos   = despues.listaAtomos;
     m_listaEnlaces  = despues.listaEnlaces;
 
+    notificaEstado();
+}
+
+void View::cargarOutOptNoINter(const QString& rutaOut, const QString& rutaCopiaVisMol){
+    // 1. Abrimos el archivo .out de MOPAC para el parser
+    QFile archivoOut(rutaOut);
+    if (!archivoOut.open(QIODevice::ReadOnly | QIODevice::Text)) {
+        m_estado.hayProceso = false;
+        notificaEstado();
+        return;
+    }
+
+    QTextStream streamOut(&archivoOut);
+
+    // Guardamos estado en el historial (Deshacer) antes de mutar la molécula
+    setEstadoHistorial();
+
+    // 2. 🎯 ¡EL PARSER!: Delegamos la lectura de coordenadas a la capa de persistencia Datos
+    bool exitoParser = Datos::leerOutOptNoInter(streamOut, m_listaAtomos);
+    archivoOut.close();
+
+    if (exitoParser) {
+        // 3. Restauramos los enlaces puros y metadatos desde la copia de seguridad .vismol
+        QVector<Atomo>  listaAtomosClon; // Contenedor temporal requerido por la firma de abrirVisMol
+        QString         comentarioClon;
+
+        Datos::abrirVisMol(rutaCopiaVisMol, listaAtomosClon, m_listaEnlaces, comentarioClon);
+
+        m_estado.modoEditor     = ModoEditor::ModoSeleccion;
+        m_estado.estaOptimizado = true;
+        m_estado.estaModificado = true; // Salta el asterisco '*' de guardado
+    }
+
+    // 4. Liberamos la UI y notificamos al Lienzo para que repinte de golpe las posiciones convergidas
+    m_estado.hayProceso = false;
     notificaEstado();
 }

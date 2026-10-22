@@ -64,6 +64,7 @@ struct Estado {
     bool        estaGuardado;
     bool        estaModificado;
     bool        hayProceso;
+    bool        estaOptimizado;
     bool        hayDeshacer;
     bool        hayRehacer;
 };
@@ -86,17 +87,24 @@ public:
     void            initUi();
 
     void            nuevoProyecto();
-    void            abrirProyecto();
+    void            abrirProyecto(const QString& ruta);
+    void            guardarProyecto();
     void            cerrarProyecto();
+    void            optGeometrica();
+
 
     Estado          getEstado();
     QString         getAtomoActivo();
     QVector<Atomo>  getListaAtomos();
     QVector<Enlace> getListaEnlaces();
     int             getIdAtomoSeleccionado();
+    QString         getComentario();
+    QString         getRutaActual();
     void            limpiarLienzo();
     void            setElementoActivo(const QString& simbolo);
     void            setModoEditor(ModoEditor modo);
+    void            setComentario(const QString& comentario);
+    void            setRutaActual(const QString& ruta);
     void            setClick(const QVector3D& posClick);
     void            setClickDerecho(const QVector3D& posClick);
     void            eliminarAtomo(int idAtomo);
@@ -132,6 +140,7 @@ private:
     void    setEstadoHistorial();
     void    atrasHistorial();
     void    adelanteHistorial();
+    void    cargarOutOptNoINter(const QString& rutaOut, const QString& rutaCopiaVisMol);
 
 
 

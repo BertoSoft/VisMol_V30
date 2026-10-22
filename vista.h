@@ -74,6 +74,14 @@ private slots:
 
     void on_actionRehacer_triggered();
 
+    void on_actionLimpiarLienzo_triggered();
+
+    void on_actionComentarioProyecto_triggered();
+
+    void on_actionGuardarComo_triggered();
+
+    void on_btnOptRapida_clicked();
+
 private:
     Ui::Vista *ui;
 
@@ -89,6 +97,7 @@ private:
     //=========================================================================
     void setEstilos();
     bool sePuedeCerrar();
+    void dialogoComentario();
 
     View*           m_view              = nullptr;
     Lienzo*         m_lienzo            = nullptr;

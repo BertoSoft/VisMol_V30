@@ -5,6 +5,9 @@
 #include <QDate>
 #include <QTime>
 #include <QTimer>
+#include <QInputDialog>
+#include <QFileInfo>
+#include <QFileDialog>
 
 Vista::Vista(QWidget *parent)
     : QMainWindow(parent)
@@ -87,30 +90,52 @@ void Vista::initBarraEstado(){
 //======================================================================================
 void Vista::actualizarUi(Estado estado){
 
-    // 0.- Estado base del Visor Molecular y la Barra Superior
+
+    // 0.- Control Dinámico del Título (Aviso de Guardado con NOMBRE_APP primero)
+    if (!estado.estaEmpezado) {
+        this->setWindowTitle(QString("%1 - Sin Proyecto").arg(NOMBRE_APP));
+    }
+    else {
+        // Determinamos el nombre del archivo. Si m_rutaArchivoActual está vacía, es un "Proyecto Nuevo"
+        QString nombreArchivo = tr("Proyecto Nuevo");
+        if (m_view && !m_view->getRutaActual().isEmpty()) {
+            nombreArchivo = QFileInfo(m_view->getRutaActual()).fileName();
+        }
+
+        // Estructura solicitada: NOMBRE_APP -> Archivo
+        QString titulo = QString("%1 | %2").arg(NOMBRE_APP).arg(nombreArchivo);
+
+        // Si el estado detecta modificaciones o datos sin salvar, inyectamos el asterisco de aviso
+        if (estado.estaModificado) {
+            titulo += " *";
+        }
+        this->setWindowTitle(titulo);
+    }
+
+    // 1.- Estado base del Visor Molecular y la Barra Superior
     ui->visorMolecular->setEnabled(estado.estaEmpezado);
 
-    // Bloque de seguridad: Forzar que las acciones de inicio estén SIEMPRE usables en barra y menús
+    // 2. Bloque de seguridad: Forzar que las acciones de inicio estén SIEMPRE usables en barra y menús
     ui->actionNuevo->setEnabled(true);
     ui->actionAbrir->setEnabled(true);
     ui->actionSalir->setEnabled(true);
 
-    // 1.- Botones del menú y barra de Archivo
+    // 3.- Botones del menú y barra de Archivo
     ui->actionCerrar->setEnabled(estado.estaEmpezado);
-    ui->actionGuardar->setEnabled(estado.estaEmpezado);
+    ui->actionGuardar->setEnabled(estado.estaEmpezado && !estado.estaVacio);
     ui->actionGuardarComo->setEnabled(estado.estaEmpezado && !estado.estaVacio);
 
-    // 2.- Botones del menú y barra de Edición
+    // 4.- Botones del menú y barra de Edición
     ui->actionDeshacer->setEnabled(estado.hayDeshacer);
     ui->actionRehacer->setEnabled(estado.hayRehacer);
     ui->actionComentarioProyecto->setEnabled(estado.estaEmpezado && !estado.estaVacio);
     ui->actionLimpiarLienzo->setEnabled(estado.estaEmpezado && !estado.estaVacio);
 
-    // 3.- Botones de Cálculo QM (Menú superior)
+    // 5.- Botones de Cálculo QM (Menú superior)
     ui->actionConfigurarLanzar->setEnabled(estado.estaEmpezado);
     ui->actionDetenerSimulacion->setEnabled(estado.estaEmpezado && estado.hayProceso);
 
-    // 4.- Barra lateral izquierda (Herramientas de edición y Elementos)
+    // 6.- Barra lateral izquierda (Herramientas de edición y Elementos)
     if(estado.estaEmpezado){
         ui->barraIzda->setEnabled(true);
         ui->btnSeleccion->setChecked(estado.modoEditor == ModoEditor::ModoSeleccion);
@@ -126,7 +151,7 @@ void Vista::actualizarUi(Estado estado){
         m_grupoIzdo->setExclusive(true);
     }
 
-    // 5.- Barra lateral derecha (Configuración cuántica y Control)
+    // 7.- Barra lateral derecha (Configuración cuántica y Control)
     // Solo se activa si el proyecto está empezado Y además tiene átomos en pantalla
     bool usarPanelDerecho = estado.estaEmpezado && !estado.estaVacio;
     ui->barraDerecha->setEnabled(usarPanelDerecho);
@@ -138,7 +163,7 @@ void Vista::actualizarUi(Estado estado){
         ui->frameSoftware->setEnabled(!estado.hayProceso);
     }
 
-    // 6.- Actualización de la Barra de Estado inferior
+    // 8.- Actualización de la Barra de Estado inferior
     if(!estado.estaEmpezado){
         m_lblMesaje->setText(tr(" Listo. Cree un nuevo proyecto o abra un archivo para comenzar."));
     }
@@ -336,7 +361,7 @@ bool Vista::sePuedeCerrar(){
         return true;
     }
 
-    // Si hay peligro, abrimos el cuadro de diálogo (responsabilidad de la Vista)
+    // Cuadro de diálogo de advertencia
     QMessageBox::StandardButton respuesta = QMessageBox::warning(
         this,
         tr("Cambios sin guardar"),
@@ -345,14 +370,89 @@ bool Vista::sePuedeCerrar(){
         );
 
     if (respuesta == QMessageBox::Save) {
-        on_actionGuardar_triggered();
-        return true; // Continuamos tras guardar
+        // Si no tiene ruta, la Vista debe pedirla antes de proceder
+        if (m_view->getRutaActual().isEmpty()) {
+            QString ruta = QFileDialog::getSaveFileName(
+                this,
+                tr("Guardar Proyecto Como"),
+                "",
+                tr("Archivos de VisMol (*.vismol)")
+                );
+
+            if (ruta.isEmpty()) {
+                return false; // ◄ ¡SOLUCIÓN!: El usuario canceló el guardado, detenemos el proceso de abrir
+            }
+
+            if (!ruta.endsWith(".vismol", Qt::CaseInsensitive)) {
+                ruta += ".vismol";
+            }
+            m_view->setRutaActual(ruta);
+        }
+
+        // Guardamos físicamente
+        m_view->guardarProyecto();
+        return true; // Continuamos con la apertura del nuevo archivo
     }
     else if (respuesta == QMessageBox::Discard) {
-        return true; // Continuamos descartando los cambios
+        return true; // Continuamos descartando los cambios y abrimos el nuevo archivo
     }
 
-    return false; // El usuario pulsó Cancelar, detenemos cualquier acción
+    return false; // El usuario pulsó Cancelar, detenemos cualquier acción (No hace nada)
+}
+
+void Vista::dialogoComentario(){
+    if (!m_view) return;
+
+    // 1. Crear el contenedor del diálogo al vuelo (achatado y ancho)
+    QDialog dlg(this);
+    dlg.setWindowTitle(NOMBRE_APP);
+    dlg.resize(750, 140); // Ajustamos la altura al reducirse a una línea
+
+    // 2. Crear los componentes internos
+    QVBoxLayout *layout = new QVBoxLayout(&dlg);
+    layout->setContentsMargins(16, 16, 16, 16);
+    layout->setSpacing(12);
+
+    QLabel *lblInfo = new QLabel(tr("🧪 Descripción o notas asociadas a la molécula:"), &dlg);
+    lblInfo->setStyleSheet("font-weight: bold; color: #38BDF8; font-size: 12px;");
+
+    // 🎯 CAMBIO A QLINEEDIT: Una sola línea de entrada de texto
+    QLineEdit *cajaTexto = new QLineEdit(&dlg);
+    cajaTexto->setText(m_view->getComentario()); // Cargar nota actual
+    cajaTexto->setPlaceholderText(tr("Escriba aquí detalles del cálculo, método químico o anotaciones..."));
+
+    // Aplicamos tu paleta oscura con una fuente mayor (font-size: 14px)
+    cajaTexto->setStyleSheet(
+        "QLineEdit {"
+        "    background-color: #030712;"
+        "    color: #10B981;"
+        "    font-family: 'Consolas', monospace;"
+        "    font-size: 16px;" // ◄ Fuente incrementada
+        "    border: 1px solid #374151;"
+        "    border-radius: 6px;"
+        "    padding: 6px 10px;"
+        "}"
+        );
+
+    QDialogButtonBox *botones = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, &dlg);
+    botones->setStyleSheet(
+        "QPushButton { background-color: #334155; color: #E2E8F0; border-radius: 4px; padding: 6px 14px; }"
+        "QPushButton:hover { background-color: #475569; border-color: #38BDF8; }"
+        "QPushButton[text*='OK'] { background-color: #0EA5E9; font-weight: bold; }"
+        );
+
+    // 3. Armar el diseño
+    layout->addWidget(lblInfo);
+    layout->addWidget(cajaTexto);
+    layout->addWidget(botones);
+
+    QObject::connect(botones, &QDialogButtonBox::accepted, &dlg, &QDialog::accept);
+    QObject::connect(botones, &QDialogButtonBox::rejected, &dlg, &QDialog::reject);
+
+    // 4. Mostrar el diálogo en pantalla y capturar el resultado
+    if (dlg.exec() == QDialog::Accepted) {
+        m_view->setComentario(cajaTexto->text()); // ◄ .text() en lugar de .toPlainText()
+    }
 }
 
 ///======================================================================================
@@ -375,11 +475,54 @@ void Vista::on_actionCerrar_triggered(){
 }
 
 void Vista::on_actionAbrir_triggered(){
-    m_view->abrirProyecto();
+    if (!m_view) return;
+
+    // 0. Antes de abrir, verificamos si hay cambios sin guardar en el lienzo actual
+    if (!sePuedeCerrar()) {
+        return; // El usuario canceló la operación en el cuadro de diálogo
+    }
+
+    // 1. La Vista se encarga del cuadro de diálogo nativo de Qt
+    QString ruta = QFileDialog::getOpenFileName(
+        this,
+        tr("Abrir Proyecto VisMol"),
+        "",
+        tr("Archivos de VisMol (*.vismol)")
+        );
+
+    // 2. Si el usuario seleccionó un archivo, se delega al cerebro (View)
+    if (!ruta.isEmpty()) {
+        m_view->abrirProyecto(ruta);
+    }
 }
 
 void Vista::on_actionGuardar_triggered(){
+    if (!m_view) return;
 
+    // 1. Comprobar si existe ruta en el cerebro. Si no existe, pedirla.
+    if (m_view->getRutaActual().isEmpty()) {
+        QString ruta = QFileDialog::getSaveFileName(
+            this,
+            tr("Guardar Proyecto Como"),
+            "",
+            tr("Archivos de VisMol (*.vismol)")
+            );
+
+        if (ruta.isEmpty()) return; // El usuario canceló el diálogo
+
+        // Aseguramos la extensión nativa
+        if (!ruta.endsWith(".vismol", Qt::CaseInsensitive)) {
+            ruta += ".vismol";
+        }
+
+        // 2. Llamamos al método del cerebro con la nueva ruta
+        m_view->setRutaActual(ruta);
+        m_view->guardarProyecto();
+    }
+    else {
+        // Si ya tiene ruta asignada, guardamos directamente sobre ella
+        m_view->guardarProyecto();
+    }
 }
 
 void Vista::on_btnCarbono_clicked(){
@@ -420,5 +563,40 @@ void Vista::on_actionDeshacer_triggered(){
 
 void Vista::on_actionRehacer_triggered(){
     m_view->rehacer();
+}
+
+void Vista::on_actionLimpiarLienzo_triggered(){
+    m_view->limpiarLienzo();
+}
+
+void Vista::on_actionComentarioProyecto_triggered(){
+    dialogoComentario();
+}
+
+void Vista::on_actionGuardarComo_triggered(){
+    if (!m_view) return;
+
+    QString ruta = QFileDialog::getSaveFileName(
+        this,
+        tr("Guardar Proyecto Como"),
+        "",
+        tr("Archivos de VisMol (*.vismol)")
+        );
+
+    if (!ruta.isEmpty()) {
+        if (!ruta.endsWith(".vismol", Qt::CaseInsensitive)) {
+            ruta += ".vismol";
+        }
+        m_view->setRutaActual(ruta);
+        m_view->guardarProyecto();
+    }
+}
+
+void Vista::on_btnOptRapida_clicked(){
+    if (!m_view) return;
+
+    if (sePuedeCerrar()) {
+        m_view->optGeometrica();
+    }
 }
 
