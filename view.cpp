@@ -839,16 +839,30 @@ void View::cargarMopacResultados(const QString& rutaOut, TipoCalculo tipoCalculo
         // 🎯 PASO 1: Recuperamos los enlaces estructurales originales desde el backup .vismol
         Datos::abrirVisMol(rutaCopiaVisMol, listaAtomosClon, m_listaEnlaces, comentarioClon);
 
-        // 🎯 PASO 2: ¡AQUÍ ES EL SITIO EXACTO!
-        // Recorremos toda la película (m_pelicula) e inyectamos los enlaces recuperados
-        // en cada uno de los fotogramas dinámicos.
+        // 🎯 PASO 2: Inyectar enlaces en la película
         if (tipoCalculo == TipoCalculo::MopacTrayectoria) {
             for (int i = 0; i < m_pelicula.size(); ++i) {
                 m_pelicula[i].listaEnlaces = m_listaEnlaces;
             }
         }
 
-        // 🎯 PASO 3: Consolidar el estado en la RAM oficial (Se movió aquí para que lea los enlaces clonados)
+        // =========================================================================
+        // 🎯 ¡AQUÍ ES EL MEJOR SITIO PARA CENTRAR! (Justo antes de fijar fotogramas y RAM oficial)
+        // =========================================================================
+
+        // 1. Centrar los fotogramas de la animación (si existen)
+        if (tipoCalculo == TipoCalculo::MopacTrayectoria && !m_pelicula.isEmpty()) {
+            for (int i = 0; i < m_pelicula.size(); ++i) {
+                centrarListaAtomos(m_pelicula[i].listaAtomos);
+            }
+        }
+
+        // 2. Centrar los átomos activos en la RAM
+        centrarListaAtomos(m_listaAtomos);
+
+        // =========================================================================
+
+        // 🎯 PASO 3: Consolidar el estado en la RAM oficial
         m_valoresCalculo = nuevosValores;
         m_estado.modoEditor     = ModoEditor::ModoSeleccion;
         m_estado.estaOptimizado = true;
@@ -858,7 +872,7 @@ void View::cargarMopacResultados(const QString& rutaOut, TipoCalculo tipoCalculo
         if (m_estado.hayTrayectoria) {
             m_fotogramaActual = m_pelicula.size() - 1;
             m_listaAtomos  = m_pelicula[m_fotogramaActual].listaAtomos;
-            m_listaEnlaces = m_pelicula[m_fotogramaActual].listaEnlaces; // Asegura que el último frame pinte las líneas
+            m_listaEnlaces = m_pelicula[m_fotogramaActual].listaEnlaces;
         }
 
         m_numeroAtomos  = m_listaAtomos.size();
@@ -869,7 +883,6 @@ void View::cargarMopacResultados(const QString& rutaOut, TipoCalculo tipoCalculo
     QFile::remove(rutaCopiaVisMol);
     m_estado.hayProceso = false;
 
-    // Al llamar a notificaEstado(), los contadores coincidirán perfectamente y la bandera no se apagará
     notificaEstado();
 }
 
@@ -886,5 +899,36 @@ TipoCalculo View::getTipoCalculo(){
     }
 
     return TipoCalculo::MopacOpt;
+}
+
+void View::centrarListaAtomos(QVector<Atomo>& lista) {
+    if (lista.isEmpty()) return;
+
+    // 1. Inicialización matemática estricta usando el primer elemento real de la RAM
+    QVector3D minCoord = lista[0].posicion;
+    QVector3D maxCoord = lista[0].posicion;
+
+    // 2. Cálculo del Bounding Box real (Caja contenedora exacta de la molécula)
+    for (const Atomo& at : lista) {
+        minCoord.setX(qMin(minCoord.x(), at.posicion.x()));
+        minCoord.setY(qMin(minCoord.y(), at.posicion.y()));
+        minCoord.setZ(qMin(minCoord.z(), at.posicion.z()));
+
+        maxCoord.setX(qMax(maxCoord.x(), at.posicion.x()));
+        maxCoord.setY(qMax(maxCoord.y(), at.posicion.y()));
+        maxCoord.setZ(qMax(maxCoord.z(), at.posicion.z()));
+    }
+
+    // 3. Fórmula exacta del Centroide (Epicentro geométrico del sistema)
+    QVector3D centroide = (minCoord + maxCoord) / 2.0f;
+
+    // 4. Traslación Canónica Pura (Arrastrar el centroide al origen 0,0,0)
+    // No requiere divisiones artificiales si la caja contenedora anterior es real.
+    for (Atomo& at : lista) {
+        at.posicion.setX(at.posicion.x() - centroide.x());
+        at.posicion.setY(at.posicion.y() - centroide.y());
+
+        // Mantener Z intacto para salvaguardar el centro de giro de la cámara de Qt
+    }
 }
 

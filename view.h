@@ -176,6 +176,7 @@ private:
     TipoCalculo     getTipoCalculo();
     void            lanzarCalculoMopac(const QString& ruta, TipoCalculo tipoCalculo);
     void            lanzarCalculoGaussian(const QString& ruta, TipoCalculo tipoCalculo);
+    void            centrarListaAtomos(QVector<Atomo>& lista);
 
 
 

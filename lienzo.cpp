@@ -52,6 +52,9 @@ void Lienzo::renderLienzo(){
     // Dibujamos los enlaces
     renderEnlaces();
 
+    // centramos la molecula
+    this->centerOn(0.0, 0.0);
+
 }
 
 // =========================================================================

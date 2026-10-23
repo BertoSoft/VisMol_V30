@@ -183,22 +183,26 @@ bool Datos::leerMopacArcSummary(
 
         // 3. Procesamiento de la matriz atómica final
         if (encontradoBloqueGeometria) {
-            // Si la línea está vacía y ya tenemos átomos guardados, salimos del bloque
             if (linea.isEmpty() && !posicionesFinales.isEmpty()) {
                 encontradoBloqueGeometria = false;
                 continue;
             }
 
             QStringList columnas = linea.split(' ', Qt::SkipEmptyParts);
-            // El formato real en el .arc es: [0]=Símbolo, [1]=X, [2]=Flag, [3]=Y, [4]=Flag, [5]=Z, [6]=Flag
+
+            // El formato real de MOPAC con flags es:
+            // [0]=Símbolo, [1]=X, [2]=FlagX, [3]=Y, [4]=FlagY, [5]=Z, [6]=FlagZ
             if (columnas.size() >= 6) {
                 bool okX, okY, okZ;
+
                 float xAngstrom = columnas[1].toFloat(&okX);
                 float yAngstrom = columnas[3].toFloat(&okY);
                 float zAngstrom = columnas[5].toFloat(&okZ);
 
                 if (okX && okY && okZ) {
+                    // 📐 FACTOR_ANGSTROM ÚNICO: 1 Ángstrom = 100 píxeles de escena
                     const float PIXELES_POR_ANGSTROM = 100.0f;
+
                     posicionesFinales.append(QVector3D(xAngstrom * PIXELES_POR_ANGSTROM,
                                                        yAngstrom * PIXELES_POR_ANGSTROM,
                                                        zAngstrom * PIXELES_POR_ANGSTROM));
@@ -372,9 +376,12 @@ bool Datos::leerMopacOutOptNoInter(
             }
 
             QStringList columnas = linea.split(' ', Qt::SkipEmptyParts);
-            // El formato de la última tabla es: [0]=Índice, [1]=Símbolo, [2]=X, [3]=Y, [4]=Z
+
+            // Aseguramos que la línea tiene las columnas requeridas: Índice, Símbolo, X, Y, Z
             if (columnas.size() >= 5) {
                 bool okX, okY, okZ;
+
+                // El formato del .out es limpio: columnas[2]=X, columnas[3]=Y, columnas[4]=Z
                 float xAngstrom = columnas[2].toFloat(&okX);
                 float yAngstrom = columnas[3].toFloat(&okY);
                 float zAngstrom = columnas[4].toFloat(&okZ);
