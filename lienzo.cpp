@@ -254,10 +254,6 @@ void Lienzo::mouseReleaseEvent(QMouseEvent *mouseEv){
         // 1. Convertimos los píxeles de pantalla a coordenadas finales reales de la escena
         QPointF posClickEscenaFinal = this->mapToScene(mouseEv->pos());
 
-        // 2. Respaldamos los deltas acumulados locales del arrastre
-        qreal deltaFinalX = m_deltaX;
-        qreal deltaFinalY = m_deltaY;
-
         // 3. LIMPIEZA PROTOCOLARIA: Reseteamos los acumuladores visuales a cero de golpe
         m_deltaX = 0.0;
         m_deltaY = 0.0;
@@ -266,6 +262,20 @@ void Lienzo::mouseReleaseEvent(QMouseEvent *mouseEv){
         // 4. ENVIAR AL CEREBRO: Mandamos la coordenada final pura de la escena
         // El cerebro computará la diferencia real y el lienzo queda limpio para la próxima acción
         m_view->setClick(QVector3D(posClickEscenaFinal.x(), posClickEscenaFinal.y(), 0.0f));
+
+        mouseEv->accept();
+        return;
+    }
+
+    // ─── 🎯 NUEVO: TRANSACCIÓN DE CIERRE EN MODO ROTACIÓN 3D (MOVIMIENTO SÓLO ÓPTICO) ───
+    if(m_view->getEstado().modoEditor == ModoRotacion3D && mouseEv->button() == Qt::LeftButton) {
+        // Reseteamos por completo la orientación de la cámara virtual a su plano basal
+        m_anguloX = 0.0f;
+        m_anguloY = 0.0f;
+        m_ultimaPosRat = QPoint(0, 0);
+
+        // Forzamos el redibujado síncrono inmediato para devolver la molécula a su estado original
+        renderLienzo();
 
         mouseEv->accept();
         return;

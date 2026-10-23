@@ -26,10 +26,24 @@ public:
         QString& comentario
     );
 
-    static bool leerOutOptNoInter(
+    static bool leerMopacArcSummary(
         QTextStream& stream,
-        QVector<Atomo>& listaAtomos
+        QVector<Atomo>& listaAtomos,
+        ValoresCalculo& valores
     );
+
+    static bool leerMopacAuxTrayectoria(
+        QTextStream& stream,
+        QVector<Trayectoria>& pelicula,
+        const QVector<Atomo>& listaAtomosBase
+        );
+
+    static bool leerMopacOutOptNoInter(
+        QTextStream& stream,
+        QVector<Atomo>& listaAtomos,
+        ValoresCalculo& valores
+    );
+
 
 
 };

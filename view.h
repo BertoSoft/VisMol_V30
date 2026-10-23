@@ -19,6 +19,26 @@ enum TipoFormato {
     NO_SE_SABE
 };
 
+enum TipoCalculo {
+    MopacOpt,
+    GausssianOpt,
+    MopacTrayectoria,
+    GAussianTrayectoria,
+    MopacFreq,
+    GaussianFreq
+};
+
+
+struct ValoresCalculo {
+    QString energia         = "-- u.a.";
+    QString calorFormacion  = "-- kcal/mol";
+    QString ionizacion      = "-- eV";
+    QString simetria        = "--";
+    QString dipolo          = "-- D";
+    QString tiempoCpu       = "-- s";
+};
+
+
 struct Atomo {
     int id;
     QString simbolo;
@@ -67,7 +87,9 @@ struct Estado {
     bool        estaOptimizado;
     bool        hayDeshacer;
     bool        hayRehacer;
+    bool        hayTrayectoria;
 };
+
 
 
 class View : public QObject
@@ -90,20 +112,30 @@ public:
     void            abrirProyecto(const QString& ruta);
     void            guardarProyecto();
     void            cerrarProyecto();
-    void            optGeometrica();
+    void            lanzarCalculoQm();
 
 
     Estado          getEstado();
+    ValoresCalculo  getValoresCalculo();
     QString         getAtomoActivo();
     QVector<Atomo>  getListaAtomos();
     QVector<Enlace> getListaEnlaces();
     int             getIdAtomoSeleccionado();
     QString         getComentario();
     QString         getRutaActual();
+    QString         getArgumentos();
+
+    int             getNumeroFotogramas();
+    int             getFotogramaActual();
+    void            setFotogramaActual(int fotograma);
+    void            fotogramaAdelante();
+    void            fotogramaAtras();
+
     void            limpiarLienzo();
     void            setElementoActivo(const QString& simbolo);
     void            setModoEditor(ModoEditor modo);
     void            setComentario(const QString& comentario);
+    void            setArgumentos(const QString& argumentos);
     void            setRutaActual(const QString& ruta);
     void            setClick(const QVector3D& posClick);
     void            setClickDerecho(const QVector3D& posClick);
@@ -127,48 +159,56 @@ private:
 // =========================================================================
 // FUNCIONES PRIVADAS
 // =========================================================================
-    void    resetValores();
-    void    notificaEstado();
-    void    procesarClickSeleccion(const QVector3D& posClick);
-    void    procesarClickDibujo(const QVector3D& posClick);
-    void    procesarClickCrearEnlace(const QVector3D& posClick);
-    void    procesarClickRotacion(const QVector3D& posClick);
-    int     getIdAtomoFromPosicion(const QVector3D& posClick);
-    float   getDistanciaPuntoSegmento(const QVector3D& posClick, const QVector3D& pos1, const QVector3D& pos2);
-    int     getEnlaces(const Atomo& atomo);
-    bool    isEnlacePosible(const Atomo& atomo1, const Atomo& atomo2);
-    void    setEstadoHistorial();
-    void    atrasHistorial();
-    void    adelanteHistorial();
-    void    cargarOutOptNoINter(const QString& rutaOut, const QString& rutaCopiaVisMol);
+    void            resetValores();
+    void            notificaEstado();
+    void            procesarClickSeleccion(const QVector3D& posClick);
+    void            procesarClickDibujo(const QVector3D& posClick);
+    void            procesarClickCrearEnlace(const QVector3D& posClick);
+    void            procesarClickRotacion(const QVector3D& posClick);
+    int             getIdAtomoFromPosicion(const QVector3D& posClick);
+    float           getDistanciaPuntoSegmento(const QVector3D& posClick, const QVector3D& pos1, const QVector3D& pos2);
+    int             getEnlaces(const Atomo& atomo);
+    bool            isEnlacePosible(const Atomo& atomo1, const Atomo& atomo2);
+    void            setEstadoHistorial();
+    void            atrasHistorial();
+    void            adelanteHistorial();
+    void            cargarMopacResultados(const QString& rutaOut, TipoCalculo tipoCalculo);
+    TipoCalculo     getTipoCalculo();
+    void            lanzarCalculoMopac(const QString& ruta, TipoCalculo tipoCalculo);
+    void            lanzarCalculoGaussian(const QString& ruta, TipoCalculo tipoCalculo);
 
 
 
 // =========================================================================
 // ZONA: ALMACÉN FÍSICO DE VARIABLES PRIVADAS (ESTADOS Y MEMORIA EN RAM)
 // =========================================================================
-    Estado              m_estado;
-    QVector<Atomo>      m_listaAtomos;
-    QVector<Enlace>     m_listaEnlaces;
-
-    int                 m_idAtomoSeleccionado;
-    QVector3D           m_ultimaPosRat;
-    int                 m_contadorId;
-    QString             m_atomoActivo;
-    QString             m_comentario;
-    QString             m_argumentos;
-    QString             m_rutaArchivoActual;
-
-    int                 m_numeroAtomos;
-    int                 m_numeroEnlaces;
 
     struct FotoActual{
         QVector<Atomo>      listaAtomos;
         QVector<Enlace>     listaEnlaces;
     };
 
-    QStack<FotoActual>  m_historialDeshacer;
-    QStack<FotoActual>  m_historialRehacer;
+    Estado                  m_estado;
+    QVector<Atomo>          m_listaAtomos;
+    QVector<Enlace>         m_listaEnlaces;
+
+    QVector<Trayectoria>    m_pelicula;
+    int                     m_fotogramaActual;
+
+    int                     m_idAtomoSeleccionado;
+    QVector3D               m_ultimaPosRat;
+    int                     m_contadorId;
+    QString                 m_atomoActivo;
+    QString                 m_comentario;
+    QString                 m_argumentos;
+    QString                 m_rutaArchivoActual;
+    ValoresCalculo          m_valoresCalculo;
+
+    int                     m_numeroAtomos;
+    int                     m_numeroEnlaces;
+
+    QStack<FotoActual>      m_historialDeshacer;
+    QStack<FotoActual>      m_historialRehacer;
 
 
 };

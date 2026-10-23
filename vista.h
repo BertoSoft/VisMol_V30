@@ -80,7 +80,13 @@ private slots:
 
     void on_actionGuardarComo_triggered();
 
-    void on_btnOptRapida_clicked();
+    void on_btnConfigurarParametros_clicked();
+
+    void on_btnLanzar_clicked();
+
+    void on_btnPasoAtras_clicked();
+
+    void on_btnPasoAdelante_clicked();
 
 private:
     Ui::Vista *ui;
@@ -98,6 +104,8 @@ private:
     void setEstilos();
     bool sePuedeCerrar();
     void dialogoComentario();
+    void configurarCalculoMopac();
+    void configurarCalculoGaussian();
 
     View*           m_view              = nullptr;
     Lienzo*         m_lienzo            = nullptr;

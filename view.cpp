@@ -159,15 +159,16 @@ void View::abrirProyecto(const QString& ruta){
         m_numeroAtomos      = m_listaAtomos.size();  // Apaga el asterisco '*' de modificación
         m_numeroEnlaces     = m_listaEnlaces.size(); // Apaga el asterisco '*' de modificación
 
-        m_estado.modoEditor   = ModoEditor::ModoSeleccion;
-        m_estado.estaEmpezado = true;
+        m_estado.modoEditor         = ModoEditor::ModoSeleccion;
+        m_estado.estaEmpezado       = true;
+        m_estado.estaModificado     = true;
     } else {
         // Si el archivo falla o está corrupto, nos aseguramos de que el sistema quede cerrado
-        m_estado.estaEmpezado = false;
+        m_estado.estaEmpezado       = false;
+        m_estado.estaModificado     = false;
     }
 
     // 5. Notificar de inmediato al Lienzo y a la Vista
-    m_estado.estaModificado = false;
     notificaEstado();
 }
 
@@ -194,24 +195,27 @@ void View::cerrarProyecto(){
     notificaEstado();
 }
 
-void View::optGeometrica(){
+void View::lanzarCalculoQm(){
     if (m_listaAtomos.isEmpty()) return;
 
-    // 1. Encendemos la bandera de proceso activo en la interfaz
+    // Congelar la interfaz de usuario al arrancar la simulación
     m_estado.hayProceso = true;
     notificaEstado();
 
-    // 2. Extraemos el nombre base directamente porque m_rutaArchivoActual no es nula
+    // Control de contingencia para las directivas del motor cuántico
+    if (m_argumentos.trimmed().isEmpty()) {
+        m_argumentos = "PM7 OPT DIPOLE NOINTER";
+    }
+
+    // Evaluar el Tipo de Cálculo estrictamente según las palabras clave de m_argumentos
+    TipoCalculo tipoCalculo = getTipoCalculo();
+
+    // Construir la ruta única para el archivo .mop en el directorio temporal
     QString nombreBase = QFileInfo(m_rutaArchivoActual).baseName();
+    if (nombreBase.isEmpty()) nombreBase = "mopac_job";
+    QString rutaInputMop = QDir::tempPath() + "/" + nombreBase + ".mop";
 
-    // Definimos las rutas en el directorio temporal
-    QString rutaInputMop   = QDir::tempPath() + "/" + nombreBase + ".mop";
-    QString rutaCopiaVisMol = QDir::tempPath() + "/" + nombreBase + ".vismol";
-
-    // ─── PASO A: Crear la copia .vismol temporal para salvaguardar los enlaces ───
-    Datos::guardarVisMol(rutaCopiaVisMol, m_listaAtomos, m_listaEnlaces, m_comentario);
-
-    // ─── PASO B: Crear el archivo de entrada .mop para MOPAC ───
+    // Escritura directa del archivo físico de entrada de MOPAC
     QFile archivoMop(rutaInputMop);
     if (!archivoMop.open(QIODevice::WriteOnly | QIODevice::Text)) {
         m_estado.hayProceso = false;
@@ -220,59 +224,41 @@ void View::optGeometrica(){
     }
 
     QTextStream out(&archivoMop);
-    out << "PM7 OPT XYZ NOINTER\n";
-    out << "Optimizacion Geometrica Rapida - " << nombreBase << "\n\n";
+    out << m_argumentos << "\n"; // Primera línea: Keywords de cálculo
+    out << "VisMol Automated Task - " << nombreBase << "\n\n";
 
-    // FACTOR DE ESCALA QUÍMICA: 1 Angstrom = 100 unidades/píxeles de escena
+    // Conversión de escala: 1 Angstrom = 100 unidades/píxeles de escena
     const float PIXELES_POR_ANGSTROM = 100.0f;
-
     for (const Atomo& a : m_listaAtomos) {
-        // Convertimos los píxeles masivos de la pantalla a distancias reales de enlace (Å)
-        float xAngstrom = a.posicion.x() / PIXELES_POR_ANGSTROM;
-        float yAngstrom = a.posicion.y() / PIXELES_POR_ANGSTROM;
-
-        // 🎯 INYECCIÓN DE RUIDO EN Z: Generamos un pequeño desfase aleatorio entre -0.05 y +0.05 Angstroms
-        // para romper la simetría plana artificial y forzar la optimización cuántica 3D real
-        float ruidoZ = (((rand() % 100) / 100.0f) - 0.5f) * 0.1f;
-        float zAngstrom = (a.posicion.z() / PIXELES_POR_ANGSTROM) + ruidoZ;
-
-        out << a.simbolo << " "
-            << xAngstrom << " 1 "
-            << yAngstrom << " 1 "
-            << zAngstrom << " 1\n";
+        float x = a.posicion.x() / PIXELES_POR_ANGSTROM;
+        float y = a.posicion.y() / PIXELES_POR_ANGSTROM;
+        float z = a.posicion.z() / PIXELES_POR_ANGSTROM;
+        out << a.simbolo << " " << x << " 1 " << y << " 1 " << z << " 1\n";
     }
     archivoMop.close();
 
-    // 3. Lanzar MOPAC en segundo plano de forma asíncrona
-    QProcess* procesoMopac = new QProcess(this);
+    // 🎯 SALVAGUARDA DE ENLACES: Generamos el backup .vismol con la misma ruta base
+    QString rutaCopiaVisMol = rutaInputMop.section('.', 0, -2) + ".vismol";
+    Datos::guardarVisMol(rutaCopiaVisMol, m_listaAtomos, m_listaEnlaces, m_comentario);
 
-    connect(procesoMopac, QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished),
-            this, [this, procesoMopac, rutaInputMop, rutaCopiaVisMol](int exitCode, QProcess::ExitStatus exitStatus) {
+    // DELEGACIÓN INMEDIATA AL EJECUTABLE SEGÚN EL COMBO DE LA UI (MOPAC por defecto de momento)
 
-                QString rutaOut = rutaInputMop.section('.', 0, -2) + ".out";
-                QString rutaArc = rutaInputMop.section('.', 0, -2) + ".arc"; // ◄ Identificamos el .arc
 
-                if (exitStatus == QProcess::NormalExit && exitCode == 0) {
-                    this->cargarOutOptNoINter(rutaOut, rutaCopiaVisMol);
-                } else {
-                    m_estado.hayProceso = false;
-                    notificaEstado();
-                }
 
-                // 🎯 LIMPIEZA PROTOCOLARIA ABSOLUTA: Borrado de residuos intermedios en /tmp
-                QFile::remove(rutaInputMop);   // Elimina .mop
-                QFile::remove(rutaCopiaVisMol); // Elimina .vismol backup
-                QFile::remove(rutaOut);         // Elimina .out
-                QFile::remove(rutaArc);         // ◄ ¡CORREGIDO! Eliminamos el .arc físico
+    // Aqui falta bifurcacion MOpac o Gaussian
 
-                procesoMopac->deleteLater();
-            });
 
-    procesoMopac->start("mopac", QStringList() << rutaInputMop);
+
+
+    this->lanzarCalculoMopac(rutaInputMop, tipoCalculo);
 }
 
 Estado View::getEstado(){
     return m_estado;
+}
+
+ValoresCalculo View::getValoresCalculo(){
+    return m_valoresCalculo;
 }
 
 QString View::getAtomoActivo(){
@@ -295,8 +281,51 @@ QString View::getRutaActual(){
     return m_rutaArchivoActual;
 }
 
+QString View::getArgumentos(){
+    return m_argumentos;
+}
+
 int View::getIdAtomoSeleccionado(){
     return m_idAtomoSeleccionado;
+}
+
+int View::getNumeroFotogramas(){
+    return m_pelicula.size();
+}
+
+int View::getFotogramaActual(){
+    return m_fotogramaActual;
+}
+
+void View::setFotogramaActual(int fotograma){
+    if (m_pelicula.isEmpty()) return;
+
+    // Acotamos el índice por seguridad física dentro de los límites de la película
+    m_fotogramaActual = qMax(0, qMin(fotograma, m_pelicula.count() - 1));
+
+    // 🎞️ SINCRONIZACIÓN DE LA RAM:
+    // Sustituimos los átomos y enlaces de trabajo activos por las fotos del fotograma seleccionado
+    m_listaAtomos  = m_pelicula[m_fotogramaActual].listaAtomos;
+    m_listaEnlaces = m_pelicula[m_fotogramaActual].listaEnlaces;
+
+    // Forzamos al lienzo a borrar el dibujo viejo y repintar el nuevo frame
+    emit actualizarLienzo();
+}
+
+void View::fotogramaAdelante(){
+    if (m_fotogramaActual < m_pelicula.count() - 1) {
+        setFotogramaActual(m_fotogramaActual + 1);
+    } else {
+        setFotogramaActual(0); // Bucle infinito (Loop): si llega al final, vuelve al principio
+    }
+}
+
+void View::fotogramaAtras(){
+    if (m_fotogramaActual > 0) {
+        setFotogramaActual(m_fotogramaActual - 1);
+    } else {
+        setFotogramaActual(m_pelicula.count() - 1); // Si retrocede en el inicio, va al último frame
+    }
 }
 
 void View::setElementoActivo(const QString& simbolo){
@@ -330,6 +359,12 @@ void View::setRutaActual(const QString& ruta){
     m_rutaArchivoActual = ruta;
 }
 
+void View::setArgumentos(const QString& argumentos){
+    m_argumentos = argumentos;
+
+    notificaEstado();
+}
+
 void View::deshacer(){
     atrasHistorial();
 }
@@ -354,8 +389,18 @@ void View::resetValores(){
     m_contadorId          = 0;
     m_rutaArchivoActual   = "";
     m_comentario          = "";
-    m_argumentos          = "";
+    m_argumentos          = "PM7 OPT DIPOLE NOINTER";
     m_ultimaPosRat        = QVector3D(-10000.0f, -10000.0f, -10000.0f);
+
+    // 2.5 🎯 INICIALIZACIÓN DE VALORES DE CÁLCULO ASOCIADOS A LA INTERFAZ
+    m_valoresCalculo.energia        = "-- u.a.";
+    m_valoresCalculo.calorFormacion = "-- kcal/mol";
+    m_valoresCalculo.ionizacion     = "-- eV";
+    m_valoresCalculo.simetria       = "--";
+    m_valoresCalculo.dipolo         = "-- D";
+    m_valoresCalculo.tiempoCpu      = "-- s";
+
+
 
     // 3.- Reiniciamos las variables de control histórico de disco
     m_numeroAtomos        = 0;
@@ -370,6 +415,7 @@ void View::resetValores(){
     m_estado.estaOptimizado = false;
     m_estado.hayDeshacer    = false;
     m_estado.hayRehacer     = false;
+    m_estado.hayTrayectoria = false;
 
     // 5.- Limpieza total del historial físico
     m_historialDeshacer.clear();
@@ -396,6 +442,13 @@ void View::notificaEstado(){
                                    m_estado.estaModificado;
 
         m_estado.estaModificado = haCambiadoContenido;
+
+        if (haCambiadoContenido) {
+            m_estado.estaOptimizado = false;
+            m_estado.hayTrayectoria = false; // 🎯 SEGURIDAD: Si se altera la RAM, la trayectoria se destruye
+            m_pelicula.clear();              // Vaciamos la película vieja para liberar RAM
+            m_fotogramaActual = 0;
+        }
 
         // Está guardado si tiene una ruta de disco asignada Y además no ha sido modificado
         m_estado.estaGuardado   = (!m_rutaArchivoActual.isEmpty()) && !m_estado.estaModificado;
@@ -680,37 +733,158 @@ void View::adelanteHistorial(){
     notificaEstado();
 }
 
-void View::cargarOutOptNoINter(const QString& rutaOut, const QString& rutaCopiaVisMol){
-    // 1. Abrimos el archivo .out de MOPAC para el parser
-    QFile archivoOut(rutaOut);
-    if (!archivoOut.open(QIODevice::ReadOnly | QIODevice::Text)) {
-        m_estado.hayProceso = false;
-        notificaEstado();
-        return;
+void View::lanzarCalculoMopac(const QString& ruta, TipoCalculo tipoCalculo){
+    QProcess* procesoMopac = new QProcess(this);
+    QString rutaBase = ruta.section('.', 0, -2);
+
+    connect(procesoMopac, QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished),
+            this, [this, procesoMopac, ruta, rutaBase, tipoCalculo](int exitCode, QProcess::ExitStatus exitStatus) {
+
+                QString rutaOut = rutaBase + ".out";
+                QString rutaArc = rutaBase + ".arc";
+
+                if (exitStatus == QProcess::NormalExit && exitCode == 0) {
+                    // 🎯 EL CARGADOR CENTRAL SE ENCARGA DE TODO:
+                    // Enviamos el .out. El switch interno delegará al parser correcto
+                    // (Opt, Freq o Trayectoria) según el 'tipoCalculo' activo.
+                    this->cargarMopacResultados(rutaOut, tipoCalculo);
+                } else {
+                    // Contingencia por si MOPAC falla catastróficamente (ej: error de sintaxis en keywords)
+                    QString rutaCopiaVisMol = rutaBase + ".vismol";
+                    QFile::remove(rutaCopiaVisMol);
+
+                    m_estado.hayProceso = false;
+                    notificaEstado();
+                }
+
+                // 🎯 LIMPIEZA PROTOCOLARIA DE RESIDUOS DE SIMULACIÓN EN /tmp
+                QFile::remove(ruta);    // Elimina el .mop de entrada
+                QFile::remove(rutaOut);  // Elimina el .out tras pasar por el parser
+                QFile::remove(rutaArc);  // Elimina el .arc estructural
+
+                procesoMopac->deleteLater();
+            });
+
+    procesoMopac->start("mopac", QStringList() << ruta);
+}
+
+void View::lanzarCalculoGaussian(const QString& ruta, TipoCalculo tipoCalculo){
+
+}
+
+void View::cargarMopacResultados(const QString& rutaOut, TipoCalculo tipoCalculo) {
+    // 1. Extraemos SIEMPRE las etiquetas fijas leyendo el archivo .arc síncrono
+    QString rutaArc = rutaOut.section('.', 0, -2) + ".arc";
+    QFile archivoArc(rutaArc);
+
+    ValoresCalculo nuevosValores;
+    bool exitoGlobal = false;
+
+    if (archivoArc.open(QIODevice::ReadOnly | QIODevice::Text)) {
+        QTextStream streamArc(&archivoArc);
+        exitoGlobal = Datos::leerMopacArcSummary(streamArc, m_listaAtomos, nuevosValores);
+        archivoArc.close();
     }
 
-    QTextStream streamOut(&archivoOut);
-
-    // Guardamos estado en el historial (Deshacer) antes de mutar la molécula
     setEstadoHistorial();
 
-    // 2. 🎯 ¡EL PARSER!: Delegamos la lectura de coordenadas a la capa de persistencia Datos
-    bool exitoParser = Datos::leerOutOptNoInter(streamOut, m_listaAtomos);
-    archivoOut.close();
+    // 2. Si el sumario fue exitoso, gestionamos las subtareas secundarias (.aux o .out)
+    if (exitoGlobal) {
+        if (tipoCalculo == TipoCalculo::MopacTrayectoria) {
+            QString rutaAux = rutaOut.section('.', 0, -2) + ".aux";
+            QFile archivoAux(rutaAux);
+            if (archivoAux.open(QIODevice::ReadOnly | QIODevice::Text)) {
+                QTextStream streamAux(&archivoAux);
+                Datos::leerMopacAuxTrayectoria(streamAux, m_pelicula, m_listaAtomos);
+                archivoAux.close();
+            }
+        }
+        else if (tipoCalculo == TipoCalculo::MopacFreq) {
+            QFile archivoOut(rutaOut);
+            if (archivoOut.open(QIODevice::ReadOnly | QIODevice::Text)) {
+                QTextStream streamOut(&archivoOut);
+                // Datos::leerMopacOutSoloFrecuencias(streamOut, nuevosValores, m_listaFrecuencias);
+                archivoOut.close();
+            }
+        }
 
-    if (exitoParser) {
-        // 3. Restauramos los enlaces puros y metadatos desde la copia de seguridad .vismol
-        QVector<Atomo>  listaAtomosClon; // Contenedor temporal requerido por la firma de abrirVisMol
-        QString         comentarioClon;
-
-        Datos::abrirVisMol(rutaCopiaVisMol, listaAtomosClon, m_listaEnlaces, comentarioClon);
-
+        // 3. Consolidar el estado en la RAM oficial
+        m_valoresCalculo = nuevosValores;
         m_estado.modoEditor     = ModoEditor::ModoSeleccion;
         m_estado.estaOptimizado = true;
-        m_estado.estaModificado = true; // Salta el asterisco '*' de guardado
+        m_estado.hayTrayectoria = (tipoCalculo == TipoCalculo::MopacTrayectoria && !m_pelicula.isEmpty());
+
+        // Si veníamos de trayectoria, fijamos el cabezal por defecto en el fotograma final estable
+        if (m_estado.hayTrayectoria) {
+            m_fotogramaActual = m_pelicula.size() - 1;
+            m_listaAtomos  = m_pelicula[m_fotogramaActual].listaAtomos;
+            // 🎯 CLAVE 1: Como la RAM ahora contiene el fotograma, inyectamos también los enlaces clonados
+            // para que no se consideren "modificados" por el validador automático
+            // m_listaEnlaces = m_pelicula[m_fotogramaActual].listaEnlaces;
+        }
+
+        // 🎯 CLAVE 2: Actualizamos los contadores históricos CON EL ESTADO REAL DEL FOTOGRAMA CARGADO
+        // De esta manera, haCambiadoContenido dará 'false' en notificaEstado() y la bandera no se apagará.
+        m_numeroAtomos          = m_listaAtomos.size();
+        m_numeroEnlaces         = m_listaEnlaces.size();
+        m_estado.estaModificado = false;
     }
 
-    // 4. Liberamos la UI y notificamos al Lienzo para que repinte de golpe las posiciones convergidas
+    // 4. Limpieza del backup de enlaces y cierre del proceso
+    QString rutaCopiaVisMol = rutaOut.section('.', 0, -2) + ".vismol";
+    if (exitoGlobal) {
+        QVector<Atomo> listaAtomosClon;
+        QString comentarioClon;
+
+        // 🎯 PASO 1: Recuperamos los enlaces estructurales originales desde el backup .vismol
+        Datos::abrirVisMol(rutaCopiaVisMol, listaAtomosClon, m_listaEnlaces, comentarioClon);
+
+        // 🎯 PASO 2: ¡AQUÍ ES EL SITIO EXACTO!
+        // Recorremos toda la película (m_pelicula) e inyectamos los enlaces recuperados
+        // en cada uno de los fotogramas dinámicos.
+        if (tipoCalculo == TipoCalculo::MopacTrayectoria) {
+            for (int i = 0; i < m_pelicula.size(); ++i) {
+                m_pelicula[i].listaEnlaces = m_listaEnlaces;
+            }
+        }
+
+        // 🎯 PASO 3: Consolidar el estado en la RAM oficial (Se movió aquí para que lea los enlaces clonados)
+        m_valoresCalculo = nuevosValores;
+        m_estado.modoEditor     = ModoEditor::ModoSeleccion;
+        m_estado.estaOptimizado = true;
+        m_estado.hayTrayectoria = (tipoCalculo == TipoCalculo::MopacTrayectoria && !m_pelicula.isEmpty());
+
+        // Si veníamos de trayectoria, fijamos el cabezal por defecto en el fotograma final estable
+        if (m_estado.hayTrayectoria) {
+            m_fotogramaActual = m_pelicula.size() - 1;
+            m_listaAtomos  = m_pelicula[m_fotogramaActual].listaAtomos;
+            m_listaEnlaces = m_pelicula[m_fotogramaActual].listaEnlaces; // Asegura que el último frame pinte las líneas
+        }
+
+        m_numeroAtomos  = m_listaAtomos.size();
+        m_numeroEnlaces = m_listaEnlaces.size();
+        m_estado.estaModificado = false;
+    }
+
+    QFile::remove(rutaCopiaVisMol);
     m_estado.hayProceso = false;
+
+    // Al llamar a notificaEstado(), los contadores coincidirán perfectamente y la bandera no se apagará
     notificaEstado();
 }
+
+
+TipoCalculo View::getTipoCalculo(){
+    QString argsUpper = m_argumentos.toUpper();
+
+    // 🎯 Detecta de forma unívoca la Tarea 2 del combo de la interfaz
+    if (argsUpper.contains("AUX") && argsUpper.contains("OPT")) {
+        return TipoCalculo::MopacTrayectoria;
+    }
+    if (argsUpper.contains("FORCE") || argsUpper.contains("FREQ")) {
+        return TipoCalculo::MopacFreq;
+    }
+
+    return TipoCalculo::MopacOpt;
+}
+
