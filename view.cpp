@@ -206,24 +206,39 @@ void View::cerrarProyecto(){
 void View::lanzarCalculoQm(){
     if (m_listaAtomos.isEmpty()) return;
 
-    // Congelar la interfaz de usuario al arrancar la simulación
+    // 1. Congelar la interfaz de usuario al arrancar la simulación
     m_estado.hayProceso = true;
     notificaEstado();
 
-    // Control de contingencia para las directivas del motor cuántico
+    // 2. Control de contingencia básico
     if (m_argumentos.trimmed().isEmpty()) {
         m_argumentos = "PM7 OPT DIPOLE NOINTER";
     }
 
-    // Evaluar el Tipo de Cálculo estrictamente según las palabras clave de m_argumentos
-    TipoCalculo tipoCalculo = getTipoCalculo();
+    // 3. Evaluar la intención original de las keywords
+    TipoCalculo tipoCalculoFaseActual = getTipoCalculo();
+    QString argumentosEjecucion = m_argumentos;
 
-    // Construir la ruta única para el archivo .mop en el directorio temporal
+    // 🎯 MÁQUINA DE ESTADOS SECUENCIAL (FASE 1):
+    // Si el usuario pide Frecuencias (FORCE) y la geometría NO está optimizada aún:
+    if (tipoCalculoFaseActual == TipoCalculo::MopacFreq && !m_estado.estaOptimizado) {
+        // Guardamos la bandera para la fase asíncrona
+        this->setProperty("esperandoForceSecuencial", true);
+
+        // Aislamos el método químico del usuario (ej: "PM7") y forzamos el cálculo previo de OPT
+        QString metodo = m_argumentos.split(' ', Qt::SkipEmptyParts).first();
+        argumentosEjecucion = metodo + " OPT DIPOLE NOINTER";
+
+        // 🌟 CLAVE: Forzamos que esta primera fase sea estrictamente una Optimización
+        tipoCalculoFaseActual = TipoCalculo::MopacOpt;
+    }
+
+    // 4. Construir la ruta única para el archivo .mop en el directorio temporal
     QString nombreBase = QFileInfo(m_rutaArchivoActual).baseName();
     if (nombreBase.isEmpty()) nombreBase = "mopac_job";
     QString rutaInputMop = QDir::tempPath() + "/" + nombreBase + ".mop";
 
-    // Escritura directa del archivo físico de entrada de MOPAC
+    // 5. Escritura del archivo de entrada de MOPAC (.mop)
     QFile archivoMop(rutaInputMop);
     if (!archivoMop.open(QIODevice::WriteOnly | QIODevice::Text)) {
         m_estado.hayProceso = false;
@@ -232,10 +247,10 @@ void View::lanzarCalculoQm(){
     }
 
     QTextStream out(&archivoMop);
-    out << m_argumentos << "\n"; // Primera línea: Keywords de cálculo
+    out << argumentosEjecucion << "\n";
     out << "VisMol Automated Task - " << nombreBase << "\n\n";
 
-    // Conversión de escala: 1 Angstrom = 100 unidades/píxeles de escena
+    // Conversión de escala Angstrom/Píxeles
     const float PIXELES_POR_ANGSTROM = 100.0f;
     for (const Atomo& a : m_listaAtomos) {
         float x = a.posicion.x() / PIXELES_POR_ANGSTROM;
@@ -245,20 +260,12 @@ void View::lanzarCalculoQm(){
     }
     archivoMop.close();
 
-    // 🎯 SALVAGUARDA DE ENLACES: Generamos el backup .vismol con la misma ruta base
+    // Backup preventivo de la conectividad (RAM -> Disco temporal)
     QString rutaCopiaVisMol = rutaInputMop.section('.', 0, -2) + ".vismol";
     Datos::guardarVisMol(rutaCopiaVisMol, m_listaAtomos, m_listaEnlaces, m_comentario);
 
-    // DELEGACIÓN INMEDIATA AL EJECUTABLE SEGÚN EL COMBO DE LA UI (MOPAC por defecto de momento)
-
-
-
-    // Aqui falta bifurcacion MOpac o Gaussian
-
-
-
-
-    this->lanzarCalculoMopac(rutaInputMop, tipoCalculo);
+    // 6. Lanzamos el ejecutable asíncrono pasándole el tipo exacto de ESTA fase
+    this->lanzarCalculoMopac(rutaInputMop, tipoCalculoFaseActual);
 }
 
 Estado View::getEstado(){
@@ -809,14 +816,38 @@ void View::lanzarCalculoMopac(const QString& ruta, TipoCalculo tipoCalculo){
                 QString rutaArc = rutaBase + ".arc";
                 QString rutaAux = rutaBase + ".aux";
 
-
                 if (exitStatus == QProcess::NormalExit && exitCode == 0) {
-                    // 🎯 EL CARGADOR CENTRAL SE ENCARGA DE TODO:
-                    // Enviamos el .out. El switch interno delegará al parser correcto
-                    // (Opt, Freq o Trayectoria) según el 'tipoCalculo' activo.
+
+                    // 🌟 AQUÍ ESTÁ EL CAMBIO: Usamos directamente el 'tipoCalculo' de la lambda.
+                    // En la vuelta 1 (OPT) valdrá estrictamente MopacOpt.
+                    // En la vuelta 2 (FORCE) valdrá estrictamente MopacFreq.
                     this->cargarMopacResultados(rutaOut, tipoCalculo);
+
+                    // 2. 🎯 EVALUACIÓN DE LA SEGUNDA FASE SECUENCIAL (OPT -> FORCE)
+                    if (this->property("esperandoForceSecuencial").toBool()) {
+                        // Consumimos y reseteamos la propiedad inmediatamente para cerrar el bucle
+                        this->setProperty("esperandoForceSecuencial", false);
+
+                        // Extraemos el método químico base del usuario e inyectamos el comando FORCE puro
+                        QString metodo = this->m_argumentos.split(' ', Qt::SkipEmptyParts).first();
+                        this->m_argumentos = metodo + " FORCE DIPOLE NOINTER";
+
+                        // Limpieza obligatoria de archivos temporales del primer proceso antes de relanzar
+                        QFile::remove(ruta);
+                        QFile::remove(rutaOut);
+                        QFile::remove(rutaArc);
+                        QFile::remove(rutaAux);
+                        procesoMopac->deleteLater();
+
+                        // Lanzamos el segundo cálculo de inmediato. Como ahora m_estado.estaOptimizado
+                        // es true, correrá FORCE sobre las coordenadas perfectas.
+                        this->lanzarCalculoQm();
+                        return; // Salida crucial para ceder el control al nuevo QProcess cuántico
+                    }
+
                 } else {
-                    // Contingencia por si MOPAC falla catastróficamente (ej: error de sintaxis en keywords)
+                    // Contingencia ante errores catastróficos de MOPAC
+                    this->setProperty("esperandoForceSecuencial", false);
                     QString rutaCopiaVisMol = rutaBase + ".vismol";
                     QFile::remove(rutaCopiaVisMol);
 
@@ -824,12 +855,11 @@ void View::lanzarCalculoMopac(const QString& ruta, TipoCalculo tipoCalculo){
                     notificaEstado();
                 }
 
-                // 🎯 LIMPIEZA PROTOCOLARIA DE RESIDUOS DE SIMULACIÓN EN /tmp
-                QFile::remove(ruta);    // Elimina el .mop de entrada
-                QFile::remove(rutaOut);  // Elimina el .out tras pasar por el parser
-                QFile::remove(rutaArc);  // Elimina el .arc estructural
-                QFile::remove(rutaAux);  // Elimina el .aux estructural
-
+                // 3. LIMPIEZA PROTOCOLARIA FINAL (Solo se alcanza si todo el flujo secuencial terminó)
+                QFile::remove(ruta);
+                QFile::remove(rutaOut);
+                QFile::remove(rutaArc);
+                QFile::remove(rutaAux);
 
                 procesoMopac->deleteLater();
             });
@@ -853,19 +883,33 @@ void View::cargarMopacResultados(const QString& rutaOut, TipoCalculo tipoCalculo
     ValoresCalculo nuevosValores;
     bool exitoGlobal = false;
 
-    // 1. Intentamos leer siempre del .arc basal de optimización
-    if (archivoArc.exists() && archivoArc.open(QIODevice::ReadOnly | QIODevice::Text)) {
-        QTextStream streamArc(&archivoArc);
-        exitoGlobal = Datos::leerMopacArcSummary(streamArc, m_listaAtomos, nuevosValores);
-        archivoArc.close();
-    }
-    // Salvaguarda por si el cálculo fue FORCE puro sin OPT
-    else {
+    // 🎯 REPARACIÓN DE FLUJO: Si es un cálculo de frecuencias puro (FORCE),
+    // omitimos la verificación estricta del .arc geométrico, ya que MOPAC v23
+    // no genera geometría optimizada en esta fase y la RAM ya posee las coordenadas ideales.
+    if (tipoCalculo == TipoCalculo::MopacFreq) {
+        exitoGlobal = true;
+        // Intentamos extraer las constantes moleculares del .out (Energía, Dipolo, Simetría)
         QFile archivoOut(rutaOut);
         if (archivoOut.open(QIODevice::ReadOnly | QIODevice::Text)) {
             QTextStream streamOut(&archivoOut);
-            exitoGlobal = Datos::leerMopacArcSummary(streamOut, m_listaAtomos, nuevosValores);
+            Datos::leerMopacArcSummary(streamOut, m_listaAtomos, nuevosValores);
             archivoOut.close();
+        }
+    }
+    else {
+        // Flujo estándar intacto para OPT y Trayectorias dinámicas
+        if (archivoArc.exists() && archivoArc.open(QIODevice::ReadOnly | QIODevice::Text)) {
+            QTextStream streamArc(&archivoArc);
+            exitoGlobal = Datos::leerMopacArcSummary(streamArc, m_listaAtomos, nuevosValores);
+            archivoArc.close();
+        }
+        else {
+            QFile archivoOut(rutaOut);
+            if (archivoOut.open(QIODevice::ReadOnly | QIODevice::Text)) {
+                QTextStream streamOut(&archivoOut);
+                exitoGlobal = Datos::leerMopacArcSummary(streamOut, m_listaAtomos, nuevosValores);
+                archivoOut.close();
+            }
         }
     }
 
@@ -890,6 +934,7 @@ void View::cargarMopacResultados(const QString& rutaOut, TipoCalculo tipoCalculo
             QFile archivoOut(rutaOut);
             if (archivoOut.open(QIODevice::ReadOnly | QIODevice::Text)) {
                 QTextStream streamOut(&archivoOut);
+                // Aquí llamará a tu nuevo parser de datos.cpp para poblar m_modosVibracionales
                 Datos::leerMopacOutSoloFrecuencias(streamOut, m_listaAtomos, m_modosVibracionales);
                 archivoOut.close();
             }

@@ -647,7 +647,7 @@ void Vista::configurarCalculoMopac(){
     QComboBox *comboTarea = new QComboBox(&dlg);
     comboTarea->addItem(tr("1.- Optimización Geométrica Rápida"), "OPT");
     comboTarea->addItem(tr("2.- Trayectoria Completa (Cálculo Dinámico)"), "OPT AUX LARGE");
-    comboTarea->addItem(tr("3.- Modos Vibracionales / Frecuencias IR"), "AUX OPT FORCE");
+    comboTarea->addItem(tr("3.- Modos Vibracionales / Frecuencias IR"), "AUX FORCE");
 
     // Campo C: Línea libre para keywords personalizadas
     QLabel *lblExtras = new QLabel(tr("Keywords Adicionales:"), &dlg);

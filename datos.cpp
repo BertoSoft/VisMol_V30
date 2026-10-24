@@ -5,6 +5,7 @@
 #include <QDateTime>
 #include <QTextStream>
 #include <QStringList>
+#include <QRegularExpression>
 
 
 bool Datos::guardarVisMol(
@@ -369,121 +370,184 @@ bool Datos::leerMopacOutSoloFrecuencias(
     m_modosVibracionales.clear();
     if (listaAtomos.isEmpty()) return false;
 
-    int numAtomos = listaAtomos.size();
-    int valoresEsperados = numAtomos * 3; // En Benceno (12 átomos) son 36 modos
-
-    QVector<float> todasLasFrecuencias;
-    QVector<float> todasLasIntensidades;
-
-    // Reposicionamos el cursor de lectura al inicio absoluto del fichero
+    // Volcar el stream completo a un string para buscar los anclajes estructurales de tu versión 2.0
     streamOut.device()->seek(0);
+    QString todoElTexto = streamOut.readAll();
+
+    // 1. ANCLAJE: Localizamos el inicio real de la tabla analítica en el .out
+    int indexAnalisis = todoElTexto.indexOf("NORMAL COORDINATE ANALYSIS");
+    if (indexAnalisis == -1) return false;
+
+    QString seccionFreq = todoElTexto.mid(indexAnalisis);
+    QTextStream lector(&seccionFreq);
+    lector.readLine(); // Consumimos la línea del título
+
+    // Expresiones regulares adaptadas de tu versión 2.0
+    QRegularExpression regexDigitos(R"((-?\d+\.\d+))");
+
+    // 🎯 MEJORA CRUCIAL: Capturamos el ID inicial y dejamos el resto de la línea libre
+    // para extraer dinámicamente un número ilimitado de columnas (3, 6 u 8 en paralelo)
+    QRegularExpression regexFilaDesplazamiento(R"(^\s*(\d+)\s+(-?\d+\.\d+.*))");
+
+    QVector<float> todasLasFrecuenciasDetectadas;
+    QStringList lineasEstructura;
+    QVector<int> mapeoFilaABloqueVertical;
+    int contadorBloquesVerticales = 0;
 
     // =========================================================================
-    // FASE 1: EXTRAER LA LISTA COMPLETA DE FRECUENCIAS (EJE X)
+    // 2. ESCANEO DEL BLOQUE COMPLETO DE MODOS NORMALES (ACUMULACIÓN CORREGIDA)
     // =========================================================================
-    while (!streamOut.atEnd()) {
-        QString linea = streamOut.readLine().trimmed();
-        if (linea.startsWith("VIB._FREQ:CM(-1)")) { // Detecta la cabecera exacta
-            int valoresLeidos = 0;
-            while (!streamOut.atEnd() && valoresLeidos < valoresEsperados) {
-                QString subLinea = streamOut.readLine().trimmed();
-                if (subLinea.isEmpty() || subLinea.startsWith("#") || subLinea.contains("=")) break;
+    while (!lector.atEnd()) {
+        QString linea = lector.readLine();
+        QString lineaTrimmed = linea.trimmed();
 
-                QStringList tokens = subLinea.split(' ', Qt::SkipEmptyParts);
-                for (const QString& token : tokens) {
-                    bool ok;
-                    float freq = token.toFloat(&ok);
-                    if (ok) {
-                        todasLasFrecuencias.append(freq);
-                        valoresLeidos++;
-                    }
-                }
-            }
+        if (linea.contains("MASS-WEIGHTED COORDINATE ANALYSIS") || linea.contains("FORCE CONSTANT IN CARTESIAN")) {
             break;
         }
-    }
 
-    // =========================================================================
-    // FASE 2: EXTRAER LOS MOMENTOS DIPOLARES DE TRANSICIÓN (EJE Y)
-    // =========================================================================
-    streamOut.device()->seek(0);
-    while (!streamOut.atEnd()) {
-        QString linea = streamOut.readLine().trimmed();
-        if (linea.startsWith("VIB._T_DIP:ELECTRONS")) { // Detecta la cabecera exacta
-            int valoresLeidos = 0;
-            while (!streamOut.atEnd() && valoresLeidos < valoresEsperados) {
-                QString subLinea = streamOut.readLine().trimmed();
-                if (subLinea.isEmpty() || subLinea.startsWith("#") || subLinea.contains("=")) break;
-
-                QStringList tokens = subLinea.split(' ', Qt::SkipEmptyParts);
-                for (const QString& token : tokens) {
-                    bool ok;
-                    float dipTransicion = token.toFloat(&ok);
-                    if (ok) {
-                        // Intensidad IR = Cuadrado del momento dipolar de transición * factor de escala estético
-                        float intensidadCalor = dipTransicion * dipTransicion * 100.0f;
-                        todasLasIntensidades.append(intensidadCalor);
-                        valoresLeidos++;
-                    }
-                }
+        if (lineaTrimmed.isEmpty()) {
+            // Si detectamos un salto de línea justo después de haber leído coordenadas de átomos,
+            // significa que MOPAC v23 ha cerrado un bloque horizontal y va a abrir el siguiente.
+            if (!lineasEstructura.isEmpty() && mapeoFilaABloqueVertical.size() == lineasEstructura.size()) {
+                contadorBloquesVerticales++;
             }
-            break;
-        }
-    }
-
-    // =========================================================================
-    // FASE 3: INICIALIZAR ESTRUCTURAS Y FILTRAR MODOS RESIDUALES (ROT/TRAS)
-    // =========================================================================
-    int totalModosReales = todasLasFrecuencias.size();
-    if (totalModosReales == 0) return false;
-
-    for (int i = 0; i < totalModosReales; ++i) {
-        // Purgamos los últimos 6 modos correspondientes a movimientos globales inertes (cercanos a 0)
-        if (i >= totalModosReales - 6 && todasLasFrecuencias[i] < 20.0f && todasLasFrecuencias[i] > -20.0f) {
             continue;
         }
 
-        ModoVibracional modo;
-        modo.numero = m_modosVibracionales.size() + 1; // Índice secuencial limpio
-        modo.frecuencia = todasLasFrecuencias[i];
-        modo.intensidad = (i < todasLasIntensidades.size()) ? todasLasIntensidades[i] : 0.0f;
-        modo.desplazamientos.resize(numAtomos);
-        m_modosVibracionales.append(modo);
+        // Capturamos de forma continua todas las filas horizontales de frecuencias cm⁻¹
+        if (!lineaTrimmed.startsWith("Root") &&
+            !lineaTrimmed.contains("A'") && !lineaTrimmed.contains("A\"") &&
+            !lineaTrimmed.contains("Ag") && !lineaTrimmed.contains("B1u") &&
+            !lineaTrimmed.contains("B2u") && !lineaTrimmed.contains("E2u") &&
+            !lineaTrimmed.contains("B1g") && !lineaTrimmed.contains("E2g") &&
+            !lineaTrimmed.contains("A2u") && !lineaTrimmed.contains("E1g") &&
+            regexDigitos.match(lineaTrimmed).hasMatch() &&
+            !regexFilaDesplazamiento.match(linea).hasMatch()) {
+
+            QRegularExpressionMatchIterator itFila = regexDigitos.globalMatch(lineaTrimmed);
+            while (itFila.hasNext()) {
+                todasLasFrecuenciasDetectadas.append(itFila.next().captured(1).toFloat());
+            }
+            continue;
+        }
+
+        QRegularExpressionMatch matchAtomo = regexFilaDesplazamiento.match(linea);
+        if (matchAtomo.hasMatch()) {
+            lineasEstructura.append(linea);
+            mapeoFilaABloqueVertical.append(contadorBloquesVerticales); // Guardamos a qué bloque horizontal pertenece esta fila
+        }
+    }
+
+    if (todasLasFrecuenciasDetectadas.isEmpty() || lineasEstructura.isEmpty()) return false;
+
+    // =========================================================================
+    // 3. CÁLCULO DINÁMICO DIMENSIONAL DEL SISTEMA
+    // =========================================================================
+    int maxIdFilaMatriz = 0;
+    for (const QString& linea : lineasEstructura) {
+        QRegularExpressionMatch match = regexFilaDesplazamiento.match(linea);
+        if (match.hasMatch()) {
+            int id = match.captured(1).toInt();
+            if (id > maxIdFilaMatriz) maxIdFilaMatriz = id;
+        }
+    }
+    int totalLineasCartesianasPorBloque = maxIdFilaMatriz; // 36 para el Benceno (12 átomos * 3 ejes)
+
+    // Contenedores globales mapeados uno a uno con el índice de la frecuencia
+    QMap<int, float> mapaFrecuencias;
+    QMap<int, QVector<QVector3D>> mapaDesplazamientos;
+
+    // Inicializamos las estructuras para cada una de las frecuencias del archivo
+    for (int i = 0; i < todasLasFrecuenciasDetectadas.size(); ++i) {
+        mapaFrecuencias[i] = todasLasFrecuenciasDetectadas[i];
+        mapaDesplazamientos[i].resize(listaAtomos.size());
+    }
+
+    // Contadores para saber en qué columna global nos encontramos al parsear el texto de las filas
+    QMap<int, int> columnasLeidasPorBloqueVertical;
+
+    // =========================================================================
+    // 4. EXTRACCIÓN DINÁMICA TRIDIMENSIONAL (Cualquier número de columnas por bloque)
+    // =========================================================================
+    for (int i = 0; i < lineasEstructura.size(); ++i) {
+        QRegularExpressionMatch match = regexFilaDesplazamiento.match(lineasEstructura[i]);
+        if (match.hasMatch()) {
+            int bloqueVerticalActual = mapeoFilaABloqueVertical[i];
+            int idFilaMatriz = match.captured(1).toInt();
+
+            int idAtomoMapeado = (idFilaMatriz - 1) / 3;
+            int ejeActivo = (idFilaMatriz - 1) % 3; // 0 = X, 1 = Y, 2 = Z
+
+            if (idAtomoMapeado >= listaAtomos.size()) continue;
+
+            // Extraemos todos los números flotantes de las columnas de esta fila
+            QString restoDeLaLinea = match.captured(2);
+            QRegularExpressionMatchIterator itColumnas = regexDigitos.globalMatch(restoDeLaLinea);
+
+            int columnaLocalDelBloque = 0;
+            while (itColumnas.hasNext()) {
+                float valorDesplazamiento = itColumnas.next().captured(1).toFloat();
+
+                // Calculamos dinámicamente cuántas columnas leyó la fila de frecuencias cm⁻¹ en este bloque horizontal
+                // para saber el desfase/offset exacto de la columna en la matriz global
+                int columnasPreviasTotales = 0;
+                for (int b = 0; b < bloqueVerticalActual; ++b) {
+                    columnasPreviasTotales += columnasLeidasPorBloqueVertical.value(b, 0);
+                }
+
+                int columnaGlobalGlobal = columnasPreviasTotales + columnaLocalDelBloque;
+
+                // Si la columna excede el número de frecuencias registradas, detenemos el desfase de seguridad
+                if (!mapaFrecuencias.contains(columnaGlobalGlobal)) {
+                    itColumnas.next();
+                    continue;
+                }
+
+                // Inyectamos las componentes espaciales en la coordenada de trabajo
+                if (ejeActivo == 0) mapaDesplazamientos[columnaGlobalGlobal][idAtomoMapeado].setX(valorDesplazamiento);
+                if (ejeActivo == 1) mapaDesplazamientos[columnaGlobalGlobal][idAtomoMapeado].setY(valorDesplazamiento);
+                if (ejeActivo == 2) mapaDesplazamientos[columnaGlobalGlobal][idAtomoMapeado].setZ(valorDesplazamiento);
+
+                // Si estamos en la última línea del bloque de átomos, guardamos cuántas columnas tenía este bloque horizontal
+                if (idFilaMatriz == totalLineasCartesianasPorBloque) {
+                    columnasLeidasPorBloqueVertical[bloqueVerticalActual] = columnaLocalDelBloque + 1;
+                }
+
+                columnaLocalDelBloque++;
+            }
+        }
     }
 
     // =========================================================================
-    // FASE 4: DEVORAR LA MATRIZ DE DESPLAZAMIENTOS 3D (AUTOVECTORES)
+    // 5. ENSAMBLAR Y APLICAR FILTRO ESTRICTO TRASLACIONAL / ROTACIONAL
     // =========================================================================
-    streamOut.device()->seek(0);
-    while (!streamOut.atEnd()) {
-        QString linea = streamOut.readLine().trimmed();
-        if (linea.startsWith("NORMAL_MODES")) { // Localiza la sección de la matriz
+    for (int i = 0; i < todasLasFrecuenciasDetectadas.size(); ++i) {
+        float valorCm1 = mapaFrecuencias[i];
 
-            for (int m = 0; m < totalModosReales; ++m) {
-                // Buscamos si el modo analizado superó la criba de frecuencias físicas
-                int idxModoValido = -1;
-                for (int v = 0; v < m_modosVibracionales.size(); ++v) {
-                    if (m_modosVibracionales[v].frecuencia == todasLasFrecuencias[m]) {
-                        idxModoValido = v;
-                        break;
-                    }
-                }
+        // Filtro dinámico: Descartamos modos trash (traslaciones/rotaciones globales rígidas ~0)
+        if (valorCm1 < 20.0f && valorCm1 > -20.0f) {
+            continue;
+        }
 
-                // Consumimos secuencialmente los tríos de coordenadas espaciales (dx, dy, dz) por átomo
-                for (int a = 0; a < numAtomos; ++a) {
-                    QString tokenX, tokenY, tokenZ;
-                    streamOut >> tokenX >> tokenY >> tokenZ;
+        QVector<QVector3D> desplazamientosModo = mapaDesplazamientos[i];
+        bool tieneMovimientoReal = false;
 
-                    if (idxModoValido >= 0) {
-                        float dx = tokenX.toFloat();
-                        float dy = tokenY.toFloat();
-                        float dz = tokenZ.toFloat();
-                        // Asignamos el vector de oscilación cuántica pura
-                        m_modosVibracionales[idxModoValido].desplazamientos[a] = QVector3D(dx, dy, dz);
-                    }
-                }
+        for (const QVector3D& v : desplazamientosModo) {
+            if (qAbs(v.x()) > 0.0001f || qAbs(v.y()) > 0.0001f || qAbs(v.z()) > 0.0001f) {
+                tieneMovimientoReal = true;
+                break;
             }
-            break;
+        }
+
+        // Si el modo contiene vectores de oscilación tridimensionales válidos, lo ceñimos a la UI
+        if (tieneMovimientoReal) {
+            ModoVibracional modo;
+            modo.numero = m_modosVibracionales.size() + 1; // Rellena del 1 al 30 de forma impecable en la UI
+            modo.frecuencia = valorCm1;
+            modo.intensidad = 0.0f; // Marcador temporal limpio (Abajo inyectaremos tu lector de dipolos)
+            modo.desplazamientos = desplazamientosModo;
+
+            m_modosVibracionales.append(modo);
         }
     }
 
