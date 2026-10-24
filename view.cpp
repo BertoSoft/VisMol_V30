@@ -161,7 +161,7 @@ void View::abrirProyecto(const QString& ruta){
 
         m_estado.modoEditor         = ModoEditor::ModoSeleccion;
         m_estado.estaEmpezado       = true;
-        m_estado.estaModificado     = true;
+        m_estado.estaModificado     = false;
     } else {
         // Si el archivo falla o está corrupto, nos aseguramos de que el sistema quede cerrado
         m_estado.estaEmpezado       = false;
@@ -465,6 +465,85 @@ void View::limpiarLienzo(){
     notificaEstado();
 }
 
+int View::getIdAtomoFromPosicion(const QVector3D& posClick){
+
+    for(const Atomo& atomo: m_listaAtomos){
+        float distancia = posClick.distanceToPoint(atomo.posicion);
+        float radio = Atomos::getRadio(atomo.simbolo); // SI no existe devuelve 15.0 A.
+        if(distancia < radio){
+            return atomo.id;
+        }
+    }
+    return -1;
+}
+
+float View::getDistanciaPuntoSegmento(const QVector3D& posClick, const QVector3D& pos1, const QVector3D& pos2){
+    QVector3D ab = pos2 - pos1;
+    QVector3D ap = posClick - pos1;
+
+    // Calcular la proyección del punto sobre el vector del segmento
+    float longitudAbCuadrada = ab.lengthSquared();
+    if (longitudAbCuadrada < 0.0001f) return pos1.distanceToPoint(posClick); // Evitar división por cero
+
+    // Factor de proyección (t) acotado entre 0.0 y 1.0 para mantenerse dentro del segmento
+    float t = QVector3D::dotProduct(ap, ab) / longitudAbCuadrada;
+    t = qMax(0.0f, qMin(1.0f, t));
+
+    // El punto más cercano sobre el segmento de recta
+    QVector3D puntoCercano = pos1 + t * ab;
+
+    // Devolvemos la distancia real entre el clic y ese punto cercano
+    return posClick.distanceToPoint(puntoCercano);
+}
+
+int View::getEnlaces(const Atomo& atomo){
+    int totalEnlaces = 0;
+
+    for(const Enlace& enlace: m_listaEnlaces){
+        if(enlace.id_atomo1 == atomo.id || enlace.id_atomo2 == atomo.id){
+            totalEnlaces += enlace.orden;
+        }
+    }
+    return totalEnlaces;
+}
+
+bool View::isEnlacePosible(const Atomo& atomo1, const Atomo& atomo2){
+    // 1. Evitar que un átomo se enlace consigo mismo
+    if (atomo1.id == atomo2.id) return false;
+
+    // 2. Calcular cuántos enlaces TOTALES acumulados tiene cada átomo actualmente
+    int enlacesActuales1 = getEnlaces(atomo1);
+    int enlacesActuales2 = getEnlaces(atomo2);
+
+    // 3. Obtener sus valencias máximas (ej: C=4, N=3, O=2, H=1)
+    int max1 = Atomos::getMaxValencia(atomo1.simbolo);
+    int max2 = Atomos::getMaxValencia(atomo2.simbolo);
+
+    // Regla A: Si cualquiera de los dos ya está al límite de su octeto/dueto, se bloquea
+    if ((enlacesActuales1 + 1) > max1 || (enlacesActuales2 + 1) > max2) {
+        return false;
+    }
+
+    // 4.- Buscamos si ya existe un enlace triple entre estos dos átomos específicos
+    for (const Enlace& enlace : m_listaEnlaces) {
+        if ((enlace.id_atomo1 == atomo1.id && enlace.id_atomo2 == atomo2.id) ||
+            (enlace.id_atomo1 == atomo2.id && enlace.id_atomo2 == atomo1.id)) {
+
+            // Si el enlace actual ya es de orden 3 (Triple), es imposible físicamente
+            // que absorba un cuarto orden, sin importar que al Carbono le sobren electrones.
+            if (enlace.orden >= 3) {
+                return false;
+            }
+            break;
+        }
+    }
+    return true;
+}
+
+// =========================================================================
+// FUNCIONES Procesar CLICKS()
+// =========================================================================
+
 void View::procesarClickSeleccion(const QVector3D& posClick){
     // 1. Buscamos de forma inmediata si hay un átomo real bajo la coordenada exacta
     int idAtomoBajoCursor = getIdAtomoFromPosicion(posClick);
@@ -614,81 +693,9 @@ void View::procesarClickRotacion(const QVector3D& posClick){
 
 }
 
-int View::getIdAtomoFromPosicion(const QVector3D& posClick){
-
-    for(const Atomo& atomo: m_listaAtomos){
-        float distancia = posClick.distanceToPoint(atomo.posicion);
-        float radio = Atomos::getRadio(atomo.simbolo); // SI no existe devuelve 15.0 A.
-        if(distancia < radio){
-            return atomo.id;
-        }
-    }
-    return -1;
-}
-
-float View::getDistanciaPuntoSegmento(const QVector3D& posClick, const QVector3D& pos1, const QVector3D& pos2){
-    QVector3D ab = pos2 - pos1;
-    QVector3D ap = posClick - pos1;
-
-    // Calcular la proyección del punto sobre el vector del segmento
-    float longitudAbCuadrada = ab.lengthSquared();
-    if (longitudAbCuadrada < 0.0001f) return pos1.distanceToPoint(posClick); // Evitar división por cero
-
-    // Factor de proyección (t) acotado entre 0.0 y 1.0 para mantenerse dentro del segmento
-    float t = QVector3D::dotProduct(ap, ab) / longitudAbCuadrada;
-    t = qMax(0.0f, qMin(1.0f, t));
-
-    // El punto más cercano sobre el segmento de recta
-    QVector3D puntoCercano = pos1 + t * ab;
-
-    // Devolvemos la distancia real entre el clic y ese punto cercano
-    return posClick.distanceToPoint(puntoCercano);
-}
-
-int View::getEnlaces(const Atomo& atomo){
-    int totalEnlaces = 0;
-
-    for(const Enlace& enlace: m_listaEnlaces){
-        if(enlace.id_atomo1 == atomo.id || enlace.id_atomo2 == atomo.id){
-            totalEnlaces += enlace.orden;
-        }
-    }
-    return totalEnlaces;
-}
-
-bool View::isEnlacePosible(const Atomo& atomo1, const Atomo& atomo2){
-    // 1. Evitar que un átomo se enlace consigo mismo
-    if (atomo1.id == atomo2.id) return false;
-
-    // 2. Calcular cuántos enlaces TOTALES acumulados tiene cada átomo actualmente
-    int enlacesActuales1 = getEnlaces(atomo1);
-    int enlacesActuales2 = getEnlaces(atomo2);
-
-    // 3. Obtener sus valencias máximas (ej: C=4, N=3, O=2, H=1)
-    int max1 = Atomos::getMaxValencia(atomo1.simbolo);
-    int max2 = Atomos::getMaxValencia(atomo2.simbolo);
-
-    // Regla A: Si cualquiera de los dos ya está al límite de su octeto/dueto, se bloquea
-    if ((enlacesActuales1 + 1) > max1 || (enlacesActuales2 + 1) > max2) {
-        return false;
-    }
-
-    // 4.- Buscamos si ya existe un enlace triple entre estos dos átomos específicos
-    for (const Enlace& enlace : m_listaEnlaces) {
-        if ((enlace.id_atomo1 == atomo1.id && enlace.id_atomo2 == atomo2.id) ||
-            (enlace.id_atomo1 == atomo2.id && enlace.id_atomo2 == atomo1.id)) {
-
-            // Si el enlace actual ya es de orden 3 (Triple), es imposible físicamente
-            // que absorba un cuarto orden, sin importar que al Carbono le sobren electrones.
-            if (enlace.orden >= 3) {
-                return false;
-            }
-            break;
-        }
-    }
-    return true;
-}
-
+// =========================================================================
+// FUNCIONES DESHACER/REHACER
+// =========================================================================
 void View::setEstadoHistorial(){
     // 1. Creamos la foto con el estado exacto actual en memoria RAM
     FotoActual foto;
@@ -733,6 +740,10 @@ void View::adelanteHistorial(){
     notificaEstado();
 }
 
+
+// =========================================================================
+// FUNCIONES LANZAR CALCULOS
+// =========================================================================
 void View::lanzarCalculoMopac(const QString& ruta, TipoCalculo tipoCalculo){
     QProcess* procesoMopac = new QProcess(this);
     QString rutaBase = ruta.section('.', 0, -2);
@@ -771,6 +782,10 @@ void View::lanzarCalculoMopac(const QString& ruta, TipoCalculo tipoCalculo){
 void View::lanzarCalculoGaussian(const QString& ruta, TipoCalculo tipoCalculo){
 
 }
+
+// =========================================================================
+// FUNCIONES RECOGER CALCULOS
+// =========================================================================
 
 void View::cargarMopacResultados(const QString& rutaOut, TipoCalculo tipoCalculo) {
     // 1. Extraemos SIEMPRE las etiquetas fijas leyendo el archivo .arc síncrono
@@ -864,7 +879,7 @@ void View::cargarMopacResultados(const QString& rutaOut, TipoCalculo tipoCalculo
 
         // 🎯 PASO 3: Consolidar el estado en la RAM oficial
         m_valoresCalculo = nuevosValores;
-        m_estado.modoEditor     = ModoEditor::ModoSeleccion;
+        m_estado.modoEditor     = ModoEditor::ModoRotacion3D;
         m_estado.estaOptimizado = true;
         m_estado.hayTrayectoria = (tipoCalculo == TipoCalculo::MopacTrayectoria && !m_pelicula.isEmpty());
 

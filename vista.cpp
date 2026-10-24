@@ -151,6 +151,18 @@ void Vista::actualizarUi(Estado estado){
     }
 
     // 7.- Barra lateral derecha (Configuración cuántica y Control)
+
+    // Panel Frequencias o wGrafica
+    if(estado.hayTrayectoria){
+        ui->wGrafica->setVisible(true);
+        ui->listaFrecuencias->setVisible(false);
+    }
+    else{
+        ui->wGrafica->setVisible(false);
+        ui->listaFrecuencias->setVisible(true);
+    }
+
+
     int numeroAtomos = m_view ? m_view->getListaAtomos().count() : 0;
     // El panel derecho ahora solo requiere que haya un proyecto empezado y átomos
     bool usarPanelDerecho = (estado.estaEmpezado && numeroAtomos > 1);
@@ -161,7 +173,6 @@ void Vista::actualizarUi(Estado estado){
         ui->btnLanzar->setEnabled(true);
         ui->btnAbortar->setEnabled(estado.hayProceso);
         ui->frameResultados->setEnabled(!estado.hayProceso);
-        ui->frameFrecuencias->setEnabled(!estado.hayProceso);
         ui->frameTrayectoria->setEnabled(!estado.hayProceso && estado.hayTrayectoria);
 
         // 🎯 ¡NUEVO!: Mostrar los argumentos actuales en tiempo real en el nuevo campo de texto

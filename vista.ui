@@ -7,7 +7,7 @@
     <x>0</x>
     <y>0</y>
     <width>1200</width>
-    <height>800</height>
+    <height>858</height>
    </rect>
   </property>
   <property name="windowTitle">
@@ -585,7 +585,7 @@
        </item>
        <item>
         <widget class="QFrame" name="frameFrecuencias">
-         <layout class="QVBoxLayout" name="layoutFreq">
+         <layout class="QVBoxLayout" name="layoutFreq" stretch="1,5,5">
           <item>
            <widget class="QLabel" name="lblTituloFreq">
             <property name="styleSheet">
@@ -603,6 +603,16 @@
               <width>0</width>
               <height>120</height>
              </size>
+            </property>
+           </widget>
+          </item>
+          <item>
+           <widget class="QWidget" name="wGrafica" native="true">
+            <property name="sizePolicy">
+             <sizepolicy hsizetype="Expanding" vsizetype="Expanding">
+              <horstretch>0</horstretch>
+              <verstretch>0</verstretch>
+             </sizepolicy>
             </property>
            </widget>
           </item>
