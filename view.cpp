@@ -107,26 +107,31 @@ void View::eliminarAtomo(int idAtomo) {
         }
     }
 
+    // 🎯 REPARACIÓN DE LOGICA: Sincronizar el conteo basal con la nueva realidad de la RAM
+    // Esto evita que notificaEstado() interprete un cambio destructivo y limpie la selección
+    m_numeroAtomos  = m_listaAtomos.size();
+    m_numeroEnlaces = m_listaEnlaces.size();
+    m_idAtomoSeleccionado = -1; // Limpieza preventiva del cabezal de enlace
+
     // 4. Refrescamos todo el sistema
     notificaEstado();
 }
 
 void View::eliminarEnlace(int idEnlace) {
+    if (idEnlace < 0 || idEnlace >= m_listaEnlaces.size()) return;
 
     // Guarda la memoria
     setEstadoHistorial();
 
-    // Buscamos el enlace por las identificaciones de sus átomos (o si tuviera un id único)
-    // En tu estructura actual, si pasamos el índice directo del vector de enlaces:
-    if (idEnlace >= 0 && idEnlace < m_listaEnlaces.size()) {
-        m_listaEnlaces.removeAt(idEnlace);
+    // Buscamos el enlace por las identificaciones de sus átomos
+    m_listaEnlaces.removeAt(idEnlace);
 
-        // ¡NUEVO!: Si se elimina un enlace por el menú contextual, limpiamos la selección por seguridad
-        m_idAtomoSeleccionado = -1;
+    // 🎯 REPARACIÓN DE LOGICA: Sincronizar el conteo de enlaces modificados
+    m_numeroEnlaces = m_listaEnlaces.size();
+    m_idAtomoSeleccionado = -1;
 
-        // Notificamos e invocamos al lienzo para que repinte las líneas inmediatamente
-        notificaEstado();
-    }
+    // Notificamos e invocamos al lienzo para que repinte las líneas inmediatamente
+    notificaEstado();
 }
 
 void View::nuevoProyecto(){
@@ -297,6 +302,14 @@ int View::getFotogramaActual(){
     return m_fotogramaActual;
 }
 
+QVector<Trayectoria> View::getPelicula() const{
+    return m_pelicula;
+}
+
+QVector<float> View::getCalores(){
+    return m_calores;
+}
+
 void View::setFotogramaActual(int fotograma){
     if (m_pelicula.isEmpty()) return;
 
@@ -305,11 +318,11 @@ void View::setFotogramaActual(int fotograma){
 
     // 🎞️ SINCRONIZACIÓN DE LA RAM:
     // Sustituimos los átomos y enlaces de trabajo activos por las fotos del fotograma seleccionado
-    m_listaAtomos  = m_pelicula[m_fotogramaActual].listaAtomos;
-    m_listaEnlaces = m_pelicula[m_fotogramaActual].listaEnlaces;
+    m_listaAtomos       = m_pelicula[m_fotogramaActual].listaAtomos;
+    m_listaEnlaces      = m_pelicula[m_fotogramaActual].listaEnlaces;
+    m_valoresCalculo    = m_pelicula[m_fotogramaActual].valoresCalculo;
 
-    // Forzamos al lienzo a borrar el dibujo viejo y repintar el nuevo frame
-    emit actualizarLienzo();
+    notificaEstado();
 }
 
 void View::fotogramaAdelante(){
@@ -382,6 +395,7 @@ void View::resetValores(){
     // 1.- listas de datos
     m_listaAtomos.clear();
     m_listaEnlaces.clear();
+    m_calores.clear();
 
     // 2.- Valores de View
     m_atomoActivo         = "";
@@ -416,6 +430,7 @@ void View::resetValores(){
     m_estado.hayDeshacer    = false;
     m_estado.hayRehacer     = false;
     m_estado.hayTrayectoria = false;
+    m_estado.hayFrecuencias = false;
 
     // 5.- Limpieza total del historial físico
     m_historialDeshacer.clear();
@@ -788,23 +803,28 @@ void View::lanzarCalculoGaussian(const QString& ruta, TipoCalculo tipoCalculo){
 // =========================================================================
 
 void View::cargarMopacResultados(const QString& rutaOut, TipoCalculo tipoCalculo) {
-    // 1. Extraemos SIEMPRE las etiquetas fijas leyendo el archivo .arc síncrono
+    // 1. Rutas e inicialización de archivos de simulación
     QString rutaArc = rutaOut.section('.', 0, -2) + ".arc";
-    QFile archivoArc(rutaArc);
+    QString rutaCopiaVisMol = rutaOut.section('.', 0, -2) + ".vismol";
 
+    QFile archivoArc(rutaArc);
     ValoresCalculo nuevosValores;
     bool exitoGlobal = false;
 
+    // Extraemos SIEMPRE las etiquetas fijas leyendo el archivo .arc síncrono
     if (archivoArc.open(QIODevice::ReadOnly | QIODevice::Text)) {
         QTextStream streamArc(&archivoArc);
         exitoGlobal = Datos::leerMopacArcSummary(streamArc, m_listaAtomos, nuevosValores);
         archivoArc.close();
     }
 
+    // Guardamos una foto en el historial antes de consolidar el nuevo estado cuántico
     setEstadoHistorial();
 
-    // 2. Si el sumario fue exitoso, gestionamos las subtareas secundarias (.aux o .out)
+    // 2. Si el sumario del .arc fue exitoso, procesamos los detalles específicos de cada tarea
     if (exitoGlobal) {
+
+        // ESCENARIO A: Trayectoria dinámica (Leemos el archivo .aux)
         if (tipoCalculo == TipoCalculo::MopacTrayectoria) {
             QString rutaAux = rutaOut.section('.', 0, -2) + ".aux";
             QFile archivoAux(rutaAux);
@@ -813,7 +833,12 @@ void View::cargarMopacResultados(const QString& rutaOut, TipoCalculo tipoCalculo
                 Datos::leerMopacAuxTrayectoria(streamAux, m_pelicula, m_listaAtomos);
                 archivoAux.close();
             }
+
+            if (!m_pelicula.isEmpty()) {
+                m_pelicula.last().valoresCalculo = nuevosValores;
+            }
         }
+        // ESCENARIO B: Modos Vibracionales / Frecuencias IR (Leemos el archivo .out)
         else if (tipoCalculo == TipoCalculo::MopacFreq) {
             QFile archivoOut(rutaOut);
             if (archivoOut.open(QIODevice::ReadOnly | QIODevice::Text)) {
@@ -822,85 +847,64 @@ void View::cargarMopacResultados(const QString& rutaOut, TipoCalculo tipoCalculo
                 archivoOut.close();
             }
         }
-
-        // 3. Consolidar el estado en la RAM oficial
-        m_valoresCalculo = nuevosValores;
-        m_estado.modoEditor     = ModoEditor::ModoSeleccion;
-        m_estado.estaOptimizado = true;
-        m_estado.hayTrayectoria = (tipoCalculo == TipoCalculo::MopacTrayectoria && !m_pelicula.isEmpty());
-
-        // Si veníamos de trayectoria, fijamos el cabezal por defecto en el fotograma final estable
-        if (m_estado.hayTrayectoria) {
-            m_fotogramaActual = m_pelicula.size() - 1;
-            m_listaAtomos  = m_pelicula[m_fotogramaActual].listaAtomos;
-            // 🎯 CLAVE 1: Como la RAM ahora contiene el fotograma, inyectamos también los enlaces clonados
-            // para que no se consideren "modificados" por el validador automático
-            // m_listaEnlaces = m_pelicula[m_fotogramaActual].listaEnlaces;
+        // ESCENARIO C: Optimización convencional (Leemos la convergencia de calores desde el .out)
+        else if (tipoCalculo == TipoCalculo::MopacOpt) {
+            QFile archivoOut(rutaOut);
+            if (archivoOut.open(QIODevice::ReadOnly | QIODevice::Text)) {
+                QTextStream streamOut(&archivoOut);
+                Datos::leerMopacOutSoloCalores(streamOut, m_calores);
+                archivoOut.close();
+            }
         }
 
-        // 🎯 CLAVE 2: Actualizamos los contadores históricos CON EL ESTADO REAL DEL FOTOGRAMA CARGADO
-        // De esta manera, haCambiadoContenido dará 'false' en notificaEstado() y la bandera no se apagará.
-        m_numeroAtomos          = m_listaAtomos.size();
-        m_numeroEnlaces         = m_listaEnlaces.size();
-        m_estado.estaModificado = false;
-    }
-
-    // 4. Limpieza del backup de enlaces y cierre del proceso
-    QString rutaCopiaVisMol = rutaOut.section('.', 0, -2) + ".vismol";
-    if (exitoGlobal) {
+        // 3. RECUPERACIÓN E INYECCIÓN DE ENLACES DESDE EL BACKUP DISCO
         QVector<Atomo> listaAtomosClon;
         QString comentarioClon;
-
-        // 🎯 PASO 1: Recuperamos los enlaces estructurales originales desde el backup .vismol
+        // Recuperamos la conectividad molecular original guardada antes de lanzar MOPAC
         Datos::abrirVisMol(rutaCopiaVisMol, listaAtomosClon, m_listaEnlaces, comentarioClon);
 
-        // 🎯 PASO 2: Inyectar enlaces en la película
+        // Si es una trayectoria, inyectamos estos mismos enlaces en cada fotograma de la película
         if (tipoCalculo == TipoCalculo::MopacTrayectoria) {
             for (int i = 0; i < m_pelicula.size(); ++i) {
                 m_pelicula[i].listaEnlaces = m_listaEnlaces;
             }
         }
 
-        // =========================================================================
-        // 🎯 ¡AQUÍ ES EL MEJOR SITIO PARA CENTRAR! (Justo antes de fijar fotogramas y RAM oficial)
-        // =========================================================================
-
-        // 1. Centrar los fotogramas de la animación (si existen)
+        // 4. ALINEACIÓN Y TRASLACIÓN GEOMÉTRICA (CENTRO DE MASAS AL ORIGEN)
+        // Centramos los fotogramas de la animación 3D si existen
         if (tipoCalculo == TipoCalculo::MopacTrayectoria && !m_pelicula.isEmpty()) {
             for (int i = 0; i < m_pelicula.size(); ++i) {
                 centrarListaAtomos(m_pelicula[i].listaAtomos);
             }
         }
-
-        // 2. Centrar los átomos activos en la RAM
+        // Centramos la estructura de átomos activa en la RAM
         centrarListaAtomos(m_listaAtomos);
 
-        // =========================================================================
-
-        // 🎯 PASO 3: Consolidar el estado en la RAM oficial
-        m_valoresCalculo = nuevosValores;
-        m_estado.modoEditor     = ModoEditor::ModoRotacion3D;
-        m_estado.estaOptimizado = true;
+        // 5. CONSOLIDACIÓN DE BANDERA DE REPRODUCTOR Y CONTROL DESLIZANTE
         m_estado.hayTrayectoria = (tipoCalculo == TipoCalculo::MopacTrayectoria && !m_pelicula.isEmpty());
 
-        // Si veníamos de trayectoria, fijamos el cabezal por defecto en el fotograma final estable
+        // Si veníamos de una trayectoria, fijamos el cabezal por defecto en el fotograma final estable
         if (m_estado.hayTrayectoria) {
             m_fotogramaActual = m_pelicula.size() - 1;
             m_listaAtomos  = m_pelicula[m_fotogramaActual].listaAtomos;
             m_listaEnlaces = m_pelicula[m_fotogramaActual].listaEnlaces;
         }
 
-        m_numeroAtomos  = m_listaAtomos.size();
-        m_numeroEnlaces = m_listaEnlaces.size();
+        // 6. ACTUALIZACIÓN DE CONTADORES HISTÓRICOS Y APAGADO DEL ASTERISCO '*'
+        m_valoresCalculo        = nuevosValores;
+        m_estado.modoEditor     = ModoEditor::ModoRotacion3D; // Forzamos órbita 3D de cámara al terminar
+        m_estado.estaOptimizado = true;
+        m_numeroAtomos          = m_listaAtomos.size();
+        m_numeroEnlaces         = m_listaEnlaces.size();
         m_estado.estaModificado = false;
     }
 
+    // 7. LIMPIEZA PROTOCOLARIA DE RESIDUOS Y NOTIFICACIÓN
     QFile::remove(rutaCopiaVisMol);
     m_estado.hayProceso = false;
 
-    notificaEstado();
+    notificaEstado(); // Una única llamada centralizada que actualiza tanto Lienzo como Vista
 }
-
 
 TipoCalculo View::getTipoCalculo(){
     QString argsUpper = m_argumentos.toUpper();

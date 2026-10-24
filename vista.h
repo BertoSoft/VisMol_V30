@@ -88,6 +88,10 @@ private slots:
 
     void on_btnPasoAdelante_clicked();
 
+    void on_sliderPasos_valueChanged(int value);
+
+    void on_btnPlayAnimacion_clicked();
+
 private:
     Ui::Vista *ui;
 
@@ -97,6 +101,7 @@ private:
     void initUi();
     void initGrupoElementos();
     void initBarraEstado();
+    void initAnimacion();
 
     //=========================================================================
     // BLOQUE: FUNCIONES Y VARIABLES PRIVADAS
@@ -114,6 +119,8 @@ private:
     QLabel*         m_lblMesaje         = nullptr;
     QLabel*         m_fecha             = nullptr;
     QLabel*         m_hora              = nullptr;
+
+    QTimer*         m_timerAnimacion    = nullptr;
 
 
 

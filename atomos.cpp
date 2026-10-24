@@ -11,8 +11,15 @@ qreal Atomos::getRadio(const QString& simbolo){
     return getAtomo(simbolo).radio;
 }
 
-int Atomos::getMaxValencia(const QString& simbolo){
-    return getAtomo(simbolo).maxValencia;
+int Atomos::getMaxValencia(const QString& simbolo){       QString sym = simbolo.trimmed().toUpper(); // 🎯 Evita fallos por minúsculas de entrada
+
+    if (sym == "C")  return 4;
+    if (sym == "N")  return 3;
+    if (sym == "O")  return 2;
+    if (sym == "H")  return 1;
+    if (sym == "S")  return 6; // El azufre puede expandir octeto (ej: sulfatos) o valencia 2/4. Si usas basal estricto pon 2 o 6 según tu parser.
+
+    return 4; // 🎯 SALVAGUARDA: Si es un elemento de la tabla periódica desconocido, por defecto dejamos 4 en vez de 0
 }
 
 QColor Atomos::getColor(const QString& simbolo){

@@ -32,6 +32,11 @@ public:
         ValoresCalculo& valores
     );
 
+    static bool leerMopacOutSoloCalores(
+        QTextStream& streamOut,
+        QVector<float>& m_calores
+    );
+
     static bool leerMopacAuxTrayectoria(
         QTextStream& stream,
         QVector<Trayectoria>& pelicula,

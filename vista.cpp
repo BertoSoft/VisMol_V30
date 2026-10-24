@@ -37,6 +37,7 @@ void Vista::initLienzo(Lienzo* lienzo){
 void Vista::initUi(){
     initGrupoElementos();
     initBarraEstado();
+    initAnimacion();
     setEstilos();
 }
 
@@ -85,136 +86,223 @@ void Vista::initBarraEstado(){
     disparador->start(1000);
 }
 
+void Vista::initAnimacion(){
+    m_timerAnimacion = new QTimer();
+    m_timerAnimacion->setInterval(200);
+
+    connect(m_timerAnimacion, &QTimer::timeout, this, &Vista::on_btnPasoAdelante_clicked);
+}
+
 //======================================================================================
 // Funciones SLOT Publicos
 //======================================================================================
 void Vista::actualizarUi(Estado estado){
-
-
-    // 0.- Control Dinámico del Título (Aviso de Guardado con NOMBRE_APP primero)
+    // =================================================================================
+    // 1. VENTANA PRINCIPAL, METADATOS Y TÍTULO DINÁMICO
+    // =================================================================================
     if (!estado.estaEmpezado) {
         this->setWindowTitle(QString("%1 - Sin Proyecto").arg(NOMBRE_APP));
     }
     else {
-        // Determinamos el nombre del archivo. Si m_rutaArchivoActual está vacía, es un "Proyecto Nuevo"
         QString nombreArchivo = tr("Proyecto Nuevo");
         if (m_view && !m_view->getRutaActual().isEmpty()) {
             nombreArchivo = QFileInfo(m_view->getRutaActual()).fileName();
         }
 
-        // Estructura solicitada: NOMBRE_APP -> Archivo
         QString titulo = QString("%1 | %2").arg(NOMBRE_APP).arg(nombreArchivo);
-
-        // Si el estado detecta modificaciones o datos sin salvar, inyectamos el asterisco de aviso
         if (estado.estaModificado) {
             titulo += " *";
         }
         this->setWindowTitle(titulo);
     }
 
-    // 1.- Estado base del Visor Molecular y la Barra Superior
+    // Habilitar/Deshabilitar área de simulación principal
     ui->visorMolecular->setEnabled(estado.estaEmpezado);
 
-    // 2. Bloque de seguridad: Forzar que las acciones de inicio estén SIEMPRE usables en barra y menús
+
+    // =================================================================================
+    // 2. ACCIONES globales, MENÚS Y BOTONES DE CONTROL (ACCIONES SÍ/NO)
+    // =================================================================================
+    // Bloque base (Siempre activos)
     ui->actionNuevo->setEnabled(true);
     ui->actionAbrir->setEnabled(true);
     ui->actionSalir->setEnabled(true);
 
-    // 3.- Botones del menú y barra de Archivo
+    // Menú Archivo dependiente de estado activo
     ui->actionCerrar->setEnabled(estado.estaEmpezado);
     ui->actionGuardar->setEnabled(estado.estaEmpezado && !estado.estaVacio);
     ui->actionGuardarComo->setEnabled(estado.estaEmpezado && !estado.estaVacio);
 
-    // 4.- Botones del menú y barra de Edición
+    // Menú Edición e Historial
     ui->actionDeshacer->setEnabled(estado.hayDeshacer);
     ui->actionRehacer->setEnabled(estado.hayRehacer);
     ui->actionComentarioProyecto->setEnabled(estado.estaEmpezado && !estado.estaVacio);
     ui->actionLimpiarLienzo->setEnabled(estado.estaEmpezado && !estado.estaVacio);
 
-    // 5.- Botones de Cálculo QM (Menú superior)
+    // Procesos cuánticos y abortar
     ui->actionDetenerSimulacion->setEnabled(estado.estaEmpezado && estado.hayProceso);
+    ui->btnAbortar->setEnabled(estado.estaEmpezado && estado.hayProceso);
 
-    // 6.- Barra lateral izquierda (Herramientas de edición y Elementos)
-    if(estado.estaEmpezado){
+
+    // =================================================================================
+    // 3. BARRA LATERAL IZQUIERDA (HERRAMIENTAS DE EDICIÓN Y ATOMOS)
+    // =================================================================================
+    if (estado.estaEmpezado) {
         ui->barraIzda->setEnabled(true);
         ui->btnSeleccion->setChecked(estado.modoEditor == ModoEditor::ModoSeleccion);
         ui->btnModoEnlace->setChecked(estado.modoEditor == ModoEditor::ModoCrearEnlace);
         ui->btnModoRotar->setChecked(estado.modoEditor == ModoEditor::ModoRotacion3D);
     }
-    else{
+    else {
         ui->barraIzda->setEnabled(false);
         m_grupoIzdo->setExclusive(false);
-        if(m_grupoIzdo->checkedButton()){
+        if (m_grupoIzdo->checkedButton()) {
             m_grupoIzdo->checkedButton()->setChecked(false);
         }
         m_grupoIzdo->setExclusive(true);
     }
 
-    // 7.- Barra lateral derecha (Configuración cuántica y Control)
 
-    // Panel Frequencias o wGrafica
-    if(estado.hayTrayectoria){
-        ui->wGrafica->setVisible(true);
-        ui->listaFrecuencias->setVisible(false);
-    }
-    else{
-        ui->wGrafica->setVisible(false);
-        ui->listaFrecuencias->setVisible(true);
-    }
-
-
+    // =================================================================================
+    // 4. BARRA LATERAL DERECHA SUPERIOR (INTERCAMBIO: RESULTADOS VS LISTA FREQUENCIAS)
+    // =================================================================================
     int numeroAtomos = m_view ? m_view->getListaAtomos().count() : 0;
-    // El panel derecho ahora solo requiere que haya un proyecto empezado y átomos
     bool usarPanelDerecho = (estado.estaEmpezado && numeroAtomos > 1);
     ui->barraDerecha->setEnabled(usarPanelDerecho);
 
-    if(usarPanelDerecho){
-        ui->frameSoftware->setEnabled(true); // Siempre activo si hay átomos
-        ui->btnLanzar->setEnabled(true);
-        ui->btnAbortar->setEnabled(estado.hayProceso);
-        ui->frameResultados->setEnabled(!estado.hayProceso);
-        ui->frameTrayectoria->setEnabled(!estado.hayProceso && estado.hayTrayectoria);
-
-        // 🎯 ¡NUEVO!: Mostrar los argumentos actuales en tiempo real en el nuevo campo de texto
+    if (usarPanelDerecho) {
         if (m_view) {
             ui->etArgumentos->setText(m_view->getArgumentos());
         }
 
-        // Sincronizar los labels de texto con los valores calculados en el cerebro (View)
-        if (m_view && !estado.hayProceso) {
-            ValoresCalculo valores = m_view->getValoresCalculo();
-            ui->lblEnergia->setText(valores.energia);
-            ui->lblCalorFormacion->setText(valores.calorFormacion);
-            ui->lblIonizacion->setText(valores.ionizacion);
-            ui->lblSimetria->setText(valores.simetria);
-            ui->lblDipolo->setText(valores.dipolo);
-            ui->lblTiempoCpu->setText(valores.tiempoCpu);
+        // 🎯 LÓGICA DE INTERCAMBIO ATÓMICO INTERNO
+        if (estado.hayFrecuencias) {
+            // Caso Espectro IR: Ocultamos los componentes individuales de la rejilla de datos
+            ui->lblTituloResultados->setText(tr("📈 MODOS VIBRACIONALES DETECTADOS"));
+
+            // Ocultamos todos los elementos del formLayout uno a uno de forma segura
+            for (int i = 0; i < ui->formLayoutResultados->count(); ++i) {
+                if (QWidget* w = ui->formLayoutResultados->itemAt(i)->widget()) {
+                    w->setVisible(false);
+                }
+            }
+
+            // Mostramos la lista de frecuencias en el espacio superior liberado
+            ui->listaFrecuencias->setVisible(true);
+            ui->listaFrecuencias->setEnabled(!estado.hayProceso);
+        }
+        else {
+            // Caso Optimización / Trayectoria: Restauramos el panel estándar
+            ui->lblTituloResultados->setText(tr("📊 RESULTADOS Y ESTADO DEL CÁLCULO"));
+            ui->listaFrecuencias->setVisible(false); // Ocultamos la lista de la zona alta
+
+            // Volvemos a visibilizar los labels individuales del formulario
+            for (int i = 0; i < ui->formLayoutResultados->count(); ++i) {
+                if (QWidget* w = ui->formLayoutResultados->itemAt(i)->widget()) {
+                    w->setVisible(true);
+                }
+            }
+
+            // Sincronizamos los datos desde la RAM del cerebro si no hay simulación activa
+            if (!estado.hayProceso && m_view) {
+                ValoresCalculo valores = m_view->getValoresCalculo();
+                ui->lblEstado->setText(estado.hayTrayectoria ? tr("Paso de Optimización %1").arg(m_view->getFotogramaActual() + 1) : tr("Listo / Estacionario"));
+                ui->lblEnergia->setText(valores.energia);
+                ui->lblCalorFormacion->setText(valores.calorFormacion);
+                ui->lblIonizacion->setText(valores.ionizacion);
+                ui->lblSimetria->setText(valores.simetria);
+                ui->lblDipolo->setText(valores.dipolo);
+                ui->lblTiempoCpu->setText(valores.tiempoCpu);
+            }
         }
     }
 
-    // 7.5 Controles trayectoria (Sincronización de la Línea de Tiempo)
+    // =================================================================================
+    // 5. PANEL INFERIOR DERECHO (WIDGET GRÁFICA ATÓMICO: CURVAS VS ESPECTRO IR)
+    // =================================================================================
+    bool tieneConvergenciaNormal = (estado.estaOptimizado && m_view && !m_view->getCalores().isEmpty());
+    ui->wGrafica->setEnabled(usarPanelDerecho);
+
+    if (estado.hayTrayectoria) {
+        // Escenario A: Modo Película / Trayectoria Dinámica activa
+        ui->lblTituloFreq->setText(tr("🎞️ PERFIL DE TRAYECTORIA ENERGÉTICA"));
+        ui->wGrafica->setVisible(true);
+        ui->frameTrayectoria->setVisible(true);
+
+        if (m_view) {
+            ui->wGrafica->setDatos(m_view->getPelicula());
+            ui->wGrafica->setPasoActual(m_view->getFotogramaActual());
+        }
+    }
+    else if (tieneConvergenciaNormal) {
+        // Escenario B: Optimización convencional (Curva estática del .out)
+        if (m_timerAnimacion && m_timerAnimacion->isActive()) {
+            m_timerAnimacion->stop();
+            ui->btnPlayAnimacion->setText(tr("▶️ Play"));
+        }
+        ui->frameTrayectoria->setVisible(false);
+
+        ui->lblTituloFreq->setText(tr("📊 CURVA DE CONVERGENCIA ENERGÉTICA"));
+        ui->wGrafica->setVisible(true);
+
+        if (m_view) {
+            ui->wGrafica->setDatosCalores(m_view->getCalores());
+            ui->wGrafica->setPasoActual(m_view->getCalores().size() - 1);
+        }
+    }
+    else if (estado.hayFrecuencias) {
+        // Escenario C: Espectroscopia (WIDGET COMPLETO ABAJO PARA EL ESPECTRO IR)
+        if (m_timerAnimacion && m_timerAnimacion->isActive()) {
+            m_timerAnimacion->stop();
+            ui->btnPlayAnimacion->setText(tr("▶️ Play"));
+        }
+        ui->frameTrayectoria->setVisible(false);
+
+        ui->lblTituloFreq->setText(tr("📈 ESPECTRO DE ABSORCIÓN INFRARROJA (IR)"));
+        ui->wGrafica->setVisible(true); // Se queda expandido ocupando toda la base
+
+        if (m_view) {
+            // Aquí acoplaremos mañana el motor matemático de transmitancia
+            // ui->wGrafica->setDatosEspectro(m_view->getNumerosOnda(), m_view->getIntensidades());
+        }
+    }
+    else {
+        // Escenario D: Reposo / Vacío (Mantenemos la gráfica limpia para conservar el color oscuro)
+        if (m_timerAnimacion && m_timerAnimacion->isActive()) {
+            m_timerAnimacion->stop();
+            ui->btnPlayAnimacion->setText(tr("▶️ Play"));
+        }
+        ui->frameTrayectoria->setVisible(false);
+
+        ui->lblTituloFreq->setText("");
+        ui->wGrafica->setVisible(true);
+
+        QVector<float> vacio;
+        ui->wGrafica->setDatosCalores(vacio);
+    }
+
+    // =================================================================================
+    // 6. SINCRONIZACIÓN DE LA LÍNEA DE TIEMPO (SLIDER DE PASOS)
+    // =================================================================================
     if (estado.estaEmpezado && estado.hayTrayectoria && m_view) {
         ui->sliderPasos->blockSignals(true);
-
-        // Fijamos el rango dinámico según el número real de fotogramas cargados en el parser
         ui->sliderPasos->setRange(0, m_view->getNumeroFotogramas() - 1);
-
-        // Pintamos el cabezal visual en la posición exacta de la RAM (por defecto el último frame)
         ui->sliderPasos->setValue(m_view->getFotogramaActual());
-
         ui->sliderPasos->blockSignals(false);
     }
     else {
-        // Si no hay trayectoria válida o limpia, reseteamos el control visual a cero
         ui->sliderPasos->setRange(0, 0);
         ui->sliderPasos->setValue(0);
     }
 
-    // 8.- Actualización de la Barra de Estado inferior
-    if(!estado.estaEmpezado){
+
+    // =================================================================================
+    // 7. BARRA DE ESTADO INFERIOR (CONSEJOS AL USUARIO)
+    // =================================================================================
+    if (!estado.estaEmpezado) {
         m_lblMesaje->setText(tr(" Listo. Cree un nuevo proyecto o abra un archivo para comenzar."));
     }
-    else{
+    else {
         QString txt = "";
         switch (estado.modoEditor) {
         case ModoSeleccion:
@@ -399,7 +487,7 @@ void Vista::setEstilos(){
         "    border-radius: 4px;"
         "}"
         "QFrame#barraDerecha QLabel {"
-        "    color: #94A3B8;" // Gris claro elegante para las etiquetas de título fijo (Tags)
+        "    color: #94A3B8;"
         "    font-weight: bold;"
         "}"
         // Selector específico para los valores mutables de los resultados:
@@ -409,13 +497,21 @@ void Vista::setEstilos(){
         "    font-family: 'Consolas', 'Courier New', monospace;"
         "    font-size: 13px;"
         "}"
-        "QListWidget::item {"
-        "    color: #E2E8F0;"
+        "QListWidget#listaFrecuencias {"
+        "    background-color: #030712;"
+        "    color: #10B981;"
+        "    font-family: 'Consolas', 'Courier New', monospace;"
+        "    border: 1px solid #1F2937;"
+        "    border-radius: 4px;"
         "}"
-        "QListWidget::item:selected {"
-        "    background-color: #38BDF8;"
-        "    color: #0F172A;"
+
+        // 🎯 REQUISITO: Estilo adaptativo para la lista cuando el panel está inactivo
+        "QListWidget#listaFrecuencias:disabled {"
+        "    background-color: #1E293B;" /* Mismo fondo exacto que barraDerecha */
+        "    border: 1px solid #1E293B;" /* Difuminamos el borde para que se fusione */
+        "    color: #475569;"            /* Apagamos el texto de ítems residuales si los hubiera */
         "}";
+
 
 
     this->setStyleSheet(qss);
@@ -546,26 +642,24 @@ void Vista::configurarCalculoMopac(){
     QComboBox *comboMetodo = new QComboBox(&dlg);
     comboMetodo->addItems({"PM7", "PM6", "AM1", "RM1", "MNDO"});
 
-    // Combo B: Tu flujo exacto de 3 Tareas de simulación requeridas
+    // Combo B: Tipo de Tarea de simulación
     QLabel *lblTarea = new QLabel(tr("Tipo de Tarea:"), &dlg);
     QComboBox *comboTarea = new QComboBox(&dlg);
     comboTarea->addItem(tr("1.- Optimización Geométrica Rápida"), "OPT");
     comboTarea->addItem(tr("2.- Trayectoria Completa (Cálculo Dinámico)"), "OPT AUX LARGE");
     comboTarea->addItem(tr("3.- Modos Vibracionales / Frecuencias IR"), "AUX FORCE");
 
-    // Campo C: Línea libre para contingencias químicas (Cargas, Espines, Disolventes...)
+    // Campo C: Línea libre para keywords personalizadas
     QLabel *lblExtras = new QLabel(tr("Keywords Adicionales:"), &dlg);
     QLineEdit *txtExtras = new QLineEdit(&dlg);
     txtExtras->setPlaceholderText(tr("Ej: CHARGE=1 PRECISE EPS=78.4"));
 
-    // Colocar los elementos en la rejilla
     grid->addWidget(lblMetodo, 0, 0);   grid->addWidget(comboMetodo, 0, 1);
     grid->addWidget(lblTarea, 1, 0);    grid->addWidget(comboTarea, 1, 1);
     grid->addWidget(lblExtras, 2, 0);   grid->addWidget(txtExtras, 2, 1);
 
     layoutPrincipal->addLayout(grid);
 
-    // Botonera estándar adaptada a tus estilos oscuros
     QDialogButtonBox *botones = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, &dlg);
     botones->setStyleSheet(
         "QPushButton { background-color: #334155; color: #E2E8F0; border-radius: 4px; padding: 6px 14px; }"
@@ -577,10 +671,12 @@ void Vista::configurarCalculoMopac(){
     QObject::connect(botones, &QDialogButtonBox::accepted, &dlg, &QDialog::accept);
     QObject::connect(botones, &QDialogButtonBox::rejected, &dlg, &QDialog::reject);
 
-    // 2. Sincronizar el diálogo leyendo la directiva en RAM actual (m_argumentos)
+    // =================================================================================
+    // 🔍 FASE DE APERTURA: Cargar el estado actual del View en los controles
+    // =================================================================================
     QString argsActuales = m_view->getArgumentos().toUpper();
 
-    // Auto-seleccionar Método
+    // Sincronizar Combo Método
     for(int i = 0; i < comboMetodo->count(); ++i) {
         if(argsActuales.contains(comboMetodo->itemText(i))) {
             comboMetodo->setCurrentIndex(i);
@@ -588,41 +684,55 @@ void Vista::configurarCalculoMopac(){
         }
     }
 
-    // Auto-seleccionar tu Tarea exacta
-    if(argsActuales.contains("FORCE") && argsActuales.contains("OPT")) {
-        comboTarea->setCurrentIndex(1); // Trayectoria
-    } else if(argsActuales.contains("FORCE")) {
-        comboTarea->setCurrentIndex(2); // Frecuencias
+    // Sincronizar Combo Tarea analizando prioridades
+    if(argsActuales.contains("FORCE")) {
+        comboTarea->setCurrentIndex(2); // AUX FORCE
+    } else if(argsActuales.contains("LARGE") || argsActuales.contains("AUX")) {
+        comboTarea->setCurrentIndex(1); // OPT AUX LARGE
     } else {
-        comboTarea->setCurrentIndex(0); // Optimización por defecto
+        comboTarea->setCurrentIndex(0); // OPT
     }
 
-    // Filtrar los comandos fijos conocidos para aislar las keywords extras escritas por el usuario
-    QString extrasFiltro = argsActuales;
-    QStringList fijos = {"PM7", "PM6", "AM1", "RM1", "MNDO", "OPT", "FORCE", "DIPOLE", "NOINTER"};
-    for(const QString& keyword : fijos) {
-        extrasFiltro.remove(keyword, Qt::CaseInsensitive);
-    }
-    txtExtras->setText(extrasFiltro.simplified().trimmed());
+    // Aislar ÚNICAMENTE las palabras libres del usuario (Limpieza por tokens exactos)
+    QStringList tokensActuales = argsActuales.split(' ', Qt::SkipEmptyParts);
+    QStringList keywordsEstructurales = {"PM7", "PM6", "AM1", "RM1", "MNDO", "OPT", "FORCE", "AUX", "LARGE", "DIPOLE", "NOINTER"};
+    QStringList extrasFiltrados;
 
-    // 3. Reconstruir la directiva unificada si el usuario pulsa OK
+    for (const QString& token : tokensActuales) {
+        if (!keywordsEstructurales.contains(token)) {
+            extrasFiltrados << token;
+        }
+    }
+    txtExtras->setText(extrasFiltrados.join(" "));
+
+    // =================================================================================
+    // 🚀 FASE DE FINALIZACIÓN (SÓLO AL PULSAR OK): Creación limpia del comando final
+    // =================================================================================
     if (dlg.exec() == QDialog::Accepted) {
-        QStringList keywords;
+        QStringList nuevosKeywords;
 
-        keywords << comboMetodo->currentText();
-        keywords << comboTarea->currentData().toString();
+        // 1. Inyectar el método del combo
+        nuevosKeywords << comboMetodo->currentText();
 
-        if(!txtExtras->text().trimmed().isEmpty()) {
-            keywords << txtExtras->text().trimmed().toUpper();
+        // 2. Inyectar los comandos de la tarea del combo
+        QString tareaSeleccionada = comboTarea->currentData().toString();
+        nuevosKeywords << tareaSeleccionada.split(' ', Qt::SkipEmptyParts);
+
+        // 3. Inyectar las keywords manuales ingresadas en el cuadro de texto
+        QString extrasTexto = txtExtras->text().trimmed().toUpper();
+        if(!extrasTexto.isEmpty()) {
+            nuevosKeywords << extrasTexto.split(' ', Qt::SkipEmptyParts);
         }
 
-        // Parámetros obligatorios de acople para que los parsers de VisMol lean sin problemas
-        keywords << "DIPOLE" << "NOINTER";
+        // 4. Parámetros estáticos de acople requeridos por la aplicación
+        nuevosKeywords << "DIPOLE" << "NOINTER";
 
-        QString comandoFinal = keywords.join(" ").simplified().trimmed();
+        // Generación de la cadena unificada final (sin acumulación previa)
+        QString comandoFinal = nuevosKeywords.join(" ").simplified().trimmed();
+
+        // Guardamos el comando en el cerebro del programa y actualizamos
         m_view->setArgumentos(comandoFinal);
-
-        m_lblMesaje->setText(tr(" Parámetros cuánticos fijados: %1").arg(comandoFinal));
+        ui->etArgumentos->setText(comandoFinal);
     }
 }
 
@@ -793,6 +903,8 @@ void Vista::on_btnPasoAtras_clicked(){
     ui->sliderPasos->blockSignals(true);
     ui->sliderPasos->setValue(m_view->getFotogramaActual());
     ui->sliderPasos->blockSignals(false);
+
+    ui->wGrafica->setPasoActual(m_view->getFotogramaActual());
 }
 
 void Vista::on_btnPasoAdelante_clicked(){
@@ -805,5 +917,34 @@ void Vista::on_btnPasoAdelante_clicked(){
     ui->sliderPasos->blockSignals(true);
     ui->sliderPasos->setValue(m_view->getFotogramaActual());
     ui->sliderPasos->blockSignals(false);
+
+    // Actualizar el marcador visual en la gráfica
+    ui->wGrafica->setPasoActual(m_view->getFotogramaActual());
+}
+
+
+void Vista::on_sliderPasos_valueChanged(int value){
+    if(!m_view || !m_view->getEstado().hayTrayectoria) return;
+
+    m_view->setFotogramaActual(value);
+    ui->wGrafica->setPasoActual(value);
+}
+
+void Vista::on_btnPlayAnimacion_clicked(){
+    if (!m_view || !m_view->getEstado().hayTrayectoria) return;
+
+    if (!m_timerAnimacion->isActive()) {
+        // 🔄 Si el reproductor llegó al final de la animación, lo reseteamos al inicio antes de reproducir
+        if (m_view->getFotogramaActual() >= m_view->getNumeroFotogramas() - 2) {
+            ui->sliderPasos->setValue(0);
+        }
+
+        m_timerAnimacion->start();
+        ui->btnPlayAnimacion->setText(tr("⏸️ Pausa"));
+    }
+    else {
+        m_timerAnimacion->stop();
+        ui->btnPlayAnimacion->setText(tr("▶️ Play"));
+    }
 }
 

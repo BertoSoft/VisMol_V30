@@ -62,6 +62,9 @@ bool Datos::abrirVisMol(
 
     QTextStream in(&archivo);
 
+    listaAtomos.clear();
+    listaEnlaces.clear();
+
     // 1. Leer metadatos iniciales de las dos primeras líneas
     QString estampaTiempo = in.readLine(); // Línea 1: Estampa temporal de guardado
     comentario = in.readLine();          // Línea 2: Notas de la molécula
@@ -222,6 +225,38 @@ bool Datos::leerMopacArcSummary(
     return false;
 }
 
+bool Datos::leerMopacOutSoloCalores(
+    QTextStream& streamOut,
+    QVector<float>& m_calores
+){
+    m_calores.clear();
+
+    // Nos aseguramos de posicionar el puntero al inicio del archivo por protocolo
+    streamOut.device()->seek(0);
+
+    while (!streamOut.atEnd()) {
+        QString linea = streamOut.readLine().trimmed();
+
+        // Buscamos las líneas de iteración del optimizador geométrico de MOPAC
+        if (linea.startsWith("CYCLE:") && linea.contains("HEAT:")) {
+            // Ejemplo: "CYCLE:    20 TIME:   0.004 TIME LEFT:  2.00D  GRAD.:    67.387 HEAT: -1.092362"
+            // Cortamos el string para quedarnos con el fragmento que va después de "HEAT:"
+            QString valorStr = linea.section("HEAT:", 1).simplified();
+
+            if (!valorStr.isEmpty()) {
+                bool ok;
+                float valorCalor = valorStr.toFloat(&ok);
+                if (ok) {
+                    m_calores.append(valorCalor);
+                }
+            }
+        }
+    }
+
+    return !m_calores.isEmpty();
+}
+
+
 bool Datos::leerMopacAuxTrayectoria(
     QTextStream& stream,
     QVector<Trayectoria>& pelicula,
@@ -233,17 +268,44 @@ bool Datos::leerMopacAuxTrayectoria(
     int numAtomos = listaAtomosBase.size();
     int valoresEsperados = numAtomos * 3; // X, Y, Z por cada átomo del sistema
 
+    QVector<QString> listaCaloresIntermedios;
+
+    // Aseguramos que el stream comience desde el principio del archivo físico .aux
+    stream.device()->seek(0);
+
     while (!stream.atEnd()) {
         QString linea = stream.readLine().trimmed();
 
-        // 🎯 CAPTURA DE FOTOGRAMAS: Detectamos tanto los pasos intermedios como el óptimo final
-        if (linea.startsWith("ATOM_X_UPDATED:ANGSTROMS") || linea.startsWith("ATOM_X_OPT:ANGSTROMS")) {
+        // 🎯 CAPTURA DIRECTA Y EXACTA: Usamos el tag real detectado en tu .aux
+        if (linea.startsWith("HEAT_OF_FORM_UPDATED:KCAL/MOL=")) {
+            // Aislamos la parte numérica que va justo después del signo '='
+            QString valorStr = linea.section('=', 1).trimmed();
 
+            if (!valorStr.isEmpty()) {
+                // 🛠️ PARSER DE CÓMPUTO QUÍMICO: MOPAC escribe 'D' para exponentes (ej: +0.342128D+04)
+                // C++ no entiende la 'D', por lo que la mutamos a 'E' para permitir el parseo flotante.
+                QString stringSincronizado = valorStr;
+                stringSincronizado.replace('D', 'E', Qt::CaseInsensitive);
+
+                bool ok;
+                float valorEnergia = stringSincronizado.toFloat(&ok);
+
+                if (ok) {
+                    // Volvemos a formatear a un string amigable para presentarlo en el QLabel de la UI
+                    listaCaloresIntermedios.append(QString("%1 kcal/mol").arg(valorEnergia, 0, 'f', 4));
+                } else {
+                    // Salvaguarda: si por alguna razón falla el float, guardamos el texto original limpio
+                    listaCaloresIntermedios.append(QString("%1 kcal/mol").arg(valorStr));
+                }
+            }
+        }
+
+        // 🎯 FASE 2: Captura y reconstrucción geométrica de las coordenadas de los fotogramas
+        if (linea.startsWith("ATOM_X_UPDATED:ANGSTROMS") || linea.startsWith("ATOM_X_OPT:ANGSTROMS")) {
             Trayectoria fotograma;
             QVector<float> coordenadasBloque;
             int valoresLeidos = 0;
 
-            // Recolectamos las líneas de números flotantes que componen este fotograma
             while (!stream.atEnd() && valoresLeidos < valoresEsperados) {
                 QString subLinea = stream.readLine().trimmed();
                 if (subLinea.isEmpty() || subLinea.startsWith("#")) break;
@@ -259,18 +321,15 @@ bool Datos::leerMopacAuxTrayectoria(
                 }
             }
 
-            // Si el bloque se ha leído por completo, reconstruimos la estructura 3D del frame
             if (valoresLeidos == valoresEsperados) {
                 const float PIXELES_POR_ANGSTROM = 100.0f;
                 int indiceCoordenada = 0;
 
                 for (int i = 0; i < numAtomos; ++i) {
                     Atomo at;
-                    // Heredamos de forma síncrona el ID y Símbolo del átomo original de la RAM
                     at.id      = listaAtomosBase[i].id;
                     at.simbolo = listaAtomosBase[i].simbolo;
 
-                    // Extraemos y escalamos el vector de posición (de Angstroms a Píxeles)
                     float x = coordenadasBloque[indiceCoordenada++] * PIXELES_POR_ANGSTROM;
                     float y = coordenadasBloque[indiceCoordenada++] * PIXELES_POR_ANGSTROM;
                     float z = coordenadasBloque[indiceCoordenada++] * PIXELES_POR_ANGSTROM;
@@ -279,9 +338,23 @@ bool Datos::leerMopacAuxTrayectoria(
                     fotograma.listaAtomos.append(at);
                 }
 
-                // Añadimos el fotograma completado a la película
+                // Inicializamos los valores por defecto que se rellenarán en la pasada final
+                fotograma.valoresCalculo.energia        = "-- u.a.";
+                fotograma.valoresCalculo.calorFormacion = "-- kcal/mol";
+                fotograma.valoresCalculo.ionizacion     = "-- eV";
+                fotograma.valoresCalculo.simetria       = "--";
+                fotograma.valoresCalculo.dipolo         = "-- D";
+                fotograma.valoresCalculo.tiempoCpu      = "-- s";
+
                 pelicula.append(fotograma);
             }
+        }
+    }
+
+    // 🎯 FASE 3: Mapeado síncrono del histórico de energías en los fotogramas en memoria
+    for (int i = 0; i < pelicula.size(); ++i) {
+        if (i < listaCaloresIntermedios.size()) {
+            pelicula[i].valoresCalculo.calorFormacion = listaCaloresIntermedios[i];
         }
     }
 

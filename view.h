@@ -54,6 +54,7 @@ struct Enlace {
 struct Trayectoria {
     QVector<Atomo>  listaAtomos;
     QVector<Enlace> listaEnlaces;
+    ValoresCalculo  valoresCalculo;
 };
 
 // Representa el vector de desplazamiento cartesiano para un átomo en una vibración específica
@@ -88,6 +89,7 @@ struct Estado {
     bool        hayDeshacer;
     bool        hayRehacer;
     bool        hayTrayectoria;
+    bool        hayFrecuencias;
 };
 
 
@@ -124,6 +126,8 @@ public:
     QString         getComentario();
     QString         getRutaActual();
     QString         getArgumentos();
+    QVector<Trayectoria>    getPelicula() const;
+    QVector<float>  getCalores();
 
     int             getNumeroFotogramas();
     int             getFotogramaActual();
@@ -192,6 +196,7 @@ private:
     Estado                  m_estado;
     QVector<Atomo>          m_listaAtomos;
     QVector<Enlace>         m_listaEnlaces;
+    QVector<float>          m_calores;
 
     QVector<Trayectoria>    m_pelicula;
     int                     m_fotogramaActual;

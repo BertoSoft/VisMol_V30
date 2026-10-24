@@ -20,7 +20,8 @@ qt_add_executable(VisMol_V30
     lienzo.h lienzo.cpp
     view.h view.cpp
     mat.h mat.cpp
-    datos.h datos.cpp             # Mantener el archivo aquí es correcto
+    datos.h datos.cpp
+    grafica.h grafica.cpp             # Mantener el archivo aquí es correcto
 )
 
 target_include_directories(VisMol_V30 PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})

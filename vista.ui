@@ -515,6 +515,16 @@
             </item>
            </layout>
           </item>
+          <item>
+           <widget class="QListWidget" name="listaFrecuencias">
+            <property name="minimumSize">
+             <size>
+              <width>0</width>
+              <height>120</height>
+             </size>
+            </property>
+           </widget>
+          </item>
          </layout>
         </widget>
        </item>
@@ -585,7 +595,7 @@
        </item>
        <item>
         <widget class="QFrame" name="frameFrecuencias">
-         <layout class="QVBoxLayout" name="layoutFreq" stretch="1,5,5">
+         <layout class="QVBoxLayout" name="layoutFreq" stretch="1,5">
           <item>
            <widget class="QLabel" name="lblTituloFreq">
             <property name="styleSheet">
@@ -597,17 +607,7 @@
            </widget>
           </item>
           <item>
-           <widget class="QListWidget" name="listaFrecuencias">
-            <property name="minimumSize">
-             <size>
-              <width>0</width>
-              <height>120</height>
-             </size>
-            </property>
-           </widget>
-          </item>
-          <item>
-           <widget class="QWidget" name="wGrafica" native="true">
+           <widget class="Grafica" name="wGrafica" native="true">
             <property name="sizePolicy">
              <sizepolicy hsizetype="Expanding" vsizetype="Expanding">
               <horstretch>0</horstretch>
@@ -823,6 +823,12 @@
    <class>Lienzo</class>
    <extends>QGraphicsView</extends>
    <header>lienzo.h</header>
+  </customwidget>
+  <customwidget>
+   <class>Grafica</class>
+   <extends>QWidget</extends>
+   <header>grafica.h</header>
+   <container>1</container>
   </customwidget>
  </customwidgets>
  <resources>
