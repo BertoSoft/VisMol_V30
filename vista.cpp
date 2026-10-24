@@ -647,7 +647,7 @@ void Vista::configurarCalculoMopac(){
     QComboBox *comboTarea = new QComboBox(&dlg);
     comboTarea->addItem(tr("1.- Optimización Geométrica Rápida"), "OPT");
     comboTarea->addItem(tr("2.- Trayectoria Completa (Cálculo Dinámico)"), "OPT AUX LARGE");
-    comboTarea->addItem(tr("3.- Modos Vibracionales / Frecuencias IR"), "AUX FORCE");
+    comboTarea->addItem(tr("3.- Modos Vibracionales / Frecuencias IR"), "AUX OPT FORCE");
 
     // Campo C: Línea libre para keywords personalizadas
     QLabel *lblExtras = new QLabel(tr("Keywords Adicionales:"), &dlg);
@@ -711,7 +711,7 @@ void Vista::configurarCalculoMopac(){
     if (dlg.exec() == QDialog::Accepted) {
         QStringList nuevosKeywords;
 
-        // 1. Inyectar el método del combo
+        // 1. Inyectar el método del combo (PM7, PM6, etc.)
         nuevosKeywords << comboMetodo->currentText();
 
         // 2. Inyectar los comandos de la tarea del combo
@@ -730,7 +730,7 @@ void Vista::configurarCalculoMopac(){
         // Generación de la cadena unificada final (sin acumulación previa)
         QString comandoFinal = nuevosKeywords.join(" ").simplified().trimmed();
 
-        // Guardamos el comando en el cerebro del programa y actualizamos
+        // Guardamos el comando en el cerebro del programa y actualizamos el cuadro de texto
         m_view->setArgumentos(comandoFinal);
         ui->etArgumentos->setText(comandoFinal);
     }

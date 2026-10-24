@@ -361,6 +361,136 @@ bool Datos::leerMopacAuxTrayectoria(
     return !pelicula.isEmpty();
 }
 
+bool Datos::leerMopacOutSoloFrecuencias(
+    QTextStream& streamOut,
+    const QVector<Atomo>& listaAtomos,
+    QVector<ModoVibracional>& m_modosVibracionales
+    ){
+    m_modosVibracionales.clear();
+    if (listaAtomos.isEmpty()) return false;
+
+    int numAtomos = listaAtomos.size();
+    int valoresEsperados = numAtomos * 3; // En Benceno (12 átomos) son 36 modos
+
+    QVector<float> todasLasFrecuencias;
+    QVector<float> todasLasIntensidades;
+
+    // Reposicionamos el cursor de lectura al inicio absoluto del fichero
+    streamOut.device()->seek(0);
+
+    // =========================================================================
+    // FASE 1: EXTRAER LA LISTA COMPLETA DE FRECUENCIAS (EJE X)
+    // =========================================================================
+    while (!streamOut.atEnd()) {
+        QString linea = streamOut.readLine().trimmed();
+        if (linea.startsWith("VIB._FREQ:CM(-1)")) { // Detecta la cabecera exacta
+            int valoresLeidos = 0;
+            while (!streamOut.atEnd() && valoresLeidos < valoresEsperados) {
+                QString subLinea = streamOut.readLine().trimmed();
+                if (subLinea.isEmpty() || subLinea.startsWith("#") || subLinea.contains("=")) break;
+
+                QStringList tokens = subLinea.split(' ', Qt::SkipEmptyParts);
+                for (const QString& token : tokens) {
+                    bool ok;
+                    float freq = token.toFloat(&ok);
+                    if (ok) {
+                        todasLasFrecuencias.append(freq);
+                        valoresLeidos++;
+                    }
+                }
+            }
+            break;
+        }
+    }
+
+    // =========================================================================
+    // FASE 2: EXTRAER LOS MOMENTOS DIPOLARES DE TRANSICIÓN (EJE Y)
+    // =========================================================================
+    streamOut.device()->seek(0);
+    while (!streamOut.atEnd()) {
+        QString linea = streamOut.readLine().trimmed();
+        if (linea.startsWith("VIB._T_DIP:ELECTRONS")) { // Detecta la cabecera exacta
+            int valoresLeidos = 0;
+            while (!streamOut.atEnd() && valoresLeidos < valoresEsperados) {
+                QString subLinea = streamOut.readLine().trimmed();
+                if (subLinea.isEmpty() || subLinea.startsWith("#") || subLinea.contains("=")) break;
+
+                QStringList tokens = subLinea.split(' ', Qt::SkipEmptyParts);
+                for (const QString& token : tokens) {
+                    bool ok;
+                    float dipTransicion = token.toFloat(&ok);
+                    if (ok) {
+                        // Intensidad IR = Cuadrado del momento dipolar de transición * factor de escala estético
+                        float intensidadCalor = dipTransicion * dipTransicion * 100.0f;
+                        todasLasIntensidades.append(intensidadCalor);
+                        valoresLeidos++;
+                    }
+                }
+            }
+            break;
+        }
+    }
+
+    // =========================================================================
+    // FASE 3: INICIALIZAR ESTRUCTURAS Y FILTRAR MODOS RESIDUALES (ROT/TRAS)
+    // =========================================================================
+    int totalModosReales = todasLasFrecuencias.size();
+    if (totalModosReales == 0) return false;
+
+    for (int i = 0; i < totalModosReales; ++i) {
+        // Purgamos los últimos 6 modos correspondientes a movimientos globales inertes (cercanos a 0)
+        if (i >= totalModosReales - 6 && todasLasFrecuencias[i] < 20.0f && todasLasFrecuencias[i] > -20.0f) {
+            continue;
+        }
+
+        ModoVibracional modo;
+        modo.numero = m_modosVibracionales.size() + 1; // Índice secuencial limpio
+        modo.frecuencia = todasLasFrecuencias[i];
+        modo.intensidad = (i < todasLasIntensidades.size()) ? todasLasIntensidades[i] : 0.0f;
+        modo.desplazamientos.resize(numAtomos);
+        m_modosVibracionales.append(modo);
+    }
+
+    // =========================================================================
+    // FASE 4: DEVORAR LA MATRIZ DE DESPLAZAMIENTOS 3D (AUTOVECTORES)
+    // =========================================================================
+    streamOut.device()->seek(0);
+    while (!streamOut.atEnd()) {
+        QString linea = streamOut.readLine().trimmed();
+        if (linea.startsWith("NORMAL_MODES")) { // Localiza la sección de la matriz
+
+            for (int m = 0; m < totalModosReales; ++m) {
+                // Buscamos si el modo analizado superó la criba de frecuencias físicas
+                int idxModoValido = -1;
+                for (int v = 0; v < m_modosVibracionales.size(); ++v) {
+                    if (m_modosVibracionales[v].frecuencia == todasLasFrecuencias[m]) {
+                        idxModoValido = v;
+                        break;
+                    }
+                }
+
+                // Consumimos secuencialmente los tríos de coordenadas espaciales (dx, dy, dz) por átomo
+                for (int a = 0; a < numAtomos; ++a) {
+                    QString tokenX, tokenY, tokenZ;
+                    streamOut >> tokenX >> tokenY >> tokenZ;
+
+                    if (idxModoValido >= 0) {
+                        float dx = tokenX.toFloat();
+                        float dy = tokenY.toFloat();
+                        float dz = tokenZ.toFloat();
+                        // Asignamos el vector de oscilación cuántica pura
+                        m_modosVibracionales[idxModoValido].desplazamientos[a] = QVector3D(dx, dy, dz);
+                    }
+                }
+            }
+            break;
+        }
+    }
+
+    return !m_modosVibracionales.isEmpty();
+}
+
+
 bool Datos::leerMopacOutOptNoInter(
     QTextStream& stream,
     QVector<Atomo>& listaAtomos,

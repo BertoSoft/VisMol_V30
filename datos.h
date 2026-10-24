@@ -43,6 +43,13 @@ public:
         const QVector<Atomo>& listaAtomosBase
         );
 
+    static bool leerMopacOutSoloFrecuencias(
+        QTextStream& streamOut,
+        const QVector<Atomo>& listaAtomos,
+        QVector<ModoVibracional>& m_modosVibracionales
+    );
+
+
     static bool leerMopacOutOptNoInter(
         QTextStream& stream,
         QVector<Atomo>& listaAtomos,

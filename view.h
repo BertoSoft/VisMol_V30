@@ -57,18 +57,12 @@ struct Trayectoria {
     ValoresCalculo  valoresCalculo;
 };
 
-// Representa el vector de desplazamiento cartesiano para un átomo en una vibración específica
-struct Vibraciones {
-    int id_atomo;      // Enlace con el átomo correspondiente
-    float dx;          // Desplazamiento en el eje X
-    float dy;          // Desplazamiento en el eje Y
-    float dz;          // Desplazamiento en el eje Z
-};
-
-// Representa la ficha cuántica completa de una frecuencia de espectroscopía IR
-struct Frecuencias {
-    float                   frecuencia;     // El valor numérico en cm⁻¹ (ej: 1650.1)
-    QVector<Vibraciones>    vibraciones;    // Un vector de desplazamiento por cada átomo de la molécula
+// 1. Estructura limpia para almacenar cada modo vibracional
+struct ModoVibracional {
+    int numero;                         // Índice del modo (1, 2, 3...)
+    float frecuencia;                   // En cm^-1 (Eje X)
+    float intensidad;                   // En Debye^2/Angstrom^2 (Eje Y)
+    QVector<QVector3D> desplazamientos; // Un vector (dx, dy, dz) por cada átomo
 };
 
 enum ModoEditor {
@@ -135,6 +129,10 @@ public:
     void            fotogramaAdelante();
     void            fotogramaAtras();
 
+    QVector<ModoVibracional> getModosVibracionales() const;
+    void            actualizarFaseVibracion(int indiceModo, float faseSenoidal, float escalaVisual);
+
+
     void            limpiarLienzo();
     void            setElementoActivo(const QString& simbolo);
     void            setModoEditor(ModoEditor modo);
@@ -196,6 +194,10 @@ private:
     Estado                  m_estado;
     QVector<Atomo>          m_listaAtomos;
     QVector<Enlace>         m_listaEnlaces;
+
+    QVector<Atomo>          m_listaAtomosTrabajo; // 🎯 ¡La que lee el lienzo! Variable y dinámica
+    QVector<ModoVibracional> m_modosVibracionales; // Historial de modos cargados
+
     QVector<float>          m_calores;
 
     QVector<Trayectoria>    m_pelicula;
