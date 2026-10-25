@@ -713,3 +713,66 @@ bool Datos::leerMopacOutOptNoInter(
     return false;
 }
 
+bool Datos::leerOrcaFinalGeometria(
+    QTextStream& stream,
+    QVector<Atomo>& listaAtomos,
+    ValoresCalculo& valores
+    ){
+    if (stream.atEnd() || listaAtomos.isEmpty()) return false;
+
+    // 1. Leer primera línea: Número de átomos (ej: 12)
+    QString primeraLinea = stream.readLine().trimmed();
+    int numAtomsCheck = primeraLinea.toInt();
+    if (numAtomsCheck != listaAtomos.size()) return false; // Control de contingencia elemental
+
+    // 2. Leer segunda línea: Extraer la energía del comentario de ORCA
+    // Ejemplo: "Coordinates from ORCA-job /tmp/benceno E -232.130424694013"
+    QString segundaLinea = stream.readLine().trimmed();
+    bool exitoEnergia = false;
+
+    if (segundaLinea.contains(" E ")) {
+        QString energiaStr = segundaLinea.section(" E ", 1).trimmed();
+        bool ok;
+        double energiaHartree = energiaStr.toDouble(&ok);
+        if (ok) {
+            valores.energia = QString("%1 u.a.").arg(energiaHartree, 0, 'f', 6);
+            // Su conversión equivalente a kcal/mol para rellenar el calor de formación
+            valores.calorFormacion = QString("%1 kcal/mol").arg(energiaHartree * 627.5093, 0, 'f', 2);
+            exitoEnergia = true;
+        }
+    }
+
+    QVector<QVector3D> posicionesFinales;
+    const float PIXELES_POR_ANGSTROM = 100.0f; // Tu escala canónica de renderizado
+
+    // 3. Procesar el bloque de coordenadas XYZ
+    while (!stream.atEnd()) {
+        QString linea = stream.readLine().trimmed();
+        if (linea.isEmpty()) continue;
+
+        QStringList columnas = linea.split(' ', Qt::SkipEmptyParts);
+        if (columnas.size() >= 4) { // Símbolo, X, Y, Z
+            bool okX, okY, okZ;
+            float xAngstrom = columnas[1].toFloat(&okX);
+            float yAngstrom = columnas[2].toFloat(&okY);
+            float zAngstrom = columnas[3].toFloat(&okZ);
+
+            if (okX && okY && okZ) {
+                posicionesFinales.append(QVector3D(xAngstrom * PIXELES_POR_ANGSTROM,
+                                                   yAngstrom * PIXELES_POR_ANGSTROM,
+                                                   zAngstrom * PIXELES_POR_ANGSTROM));
+            }
+        }
+    }
+
+    // 4. Volcado síncrono en las referencias de la RAM si las dimensiones coinciden
+    if (posicionesFinales.size() == listaAtomos.size()) {
+        for (int i = 0; i < listaAtomos.size(); ++i) {
+            listaAtomos[i].posicion = posicionesFinales[i];
+        }
+        return true;
+    }
+
+    return false;
+}
+

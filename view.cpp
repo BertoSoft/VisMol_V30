@@ -203,69 +203,111 @@ void View::cerrarProyecto(){
     notificaEstado();
 }
 
-void View::lanzarCalculoQm(){
+void View::lanzarCalculoQm(int metodo){
     if (m_listaAtomos.isEmpty()) return;
 
     // 1. Congelar la interfaz de usuario al arrancar la simulación
     m_estado.hayProceso = true;
     notificaEstado();
 
-    // 2. Control de contingencia básico
-    if (m_argumentos.trimmed().isEmpty()) {
-        m_argumentos = "PM7 OPT DIPOLE NOINTER";
-    }
+    // 2. Obtener el tipo de cálculo unificado de forma limpia
+    TipoCalculo tipoCalculoFaseActual = getTipoCalculo(metodo);
 
-    // 3. Evaluar la intención original de las keywords
-    TipoCalculo tipoCalculoFaseActual = getTipoCalculo();
-    QString argumentosEjecucion = m_argumentos;
-
-    // 🎯 MÁQUINA DE ESTADOS SECUENCIAL (FASE 1):
-    // Si el usuario pide Frecuencias (FORCE) y la geometría NO está optimizada aún:
-    if (tipoCalculoFaseActual == TipoCalculo::MopacFreq && !m_estado.estaOptimizado) {
-        // Guardamos la bandera para la fase asíncrona
-        this->setProperty("esperandoForceSecuencial", true);
-
-        // Aislamos el método químico del usuario (ej: "PM7") y forzamos el cálculo previo de OPT
-        QString metodo = m_argumentos.split(' ', Qt::SkipEmptyParts).first();
-        argumentosEjecucion = metodo + " OPT DIPOLE NOINTER";
-
-        // 🌟 CLAVE: Forzamos que esta primera fase sea estrictamente una Optimización
-        tipoCalculoFaseActual = TipoCalculo::MopacOpt;
-    }
-
-    // 4. Construir la ruta única para el archivo .mop en el directorio temporal
+    // 3. Extraer el nombre base del proyecto para los archivos temporales
     QString nombreBase = QFileInfo(m_rutaArchivoActual).baseName();
-    if (nombreBase.isEmpty()) nombreBase = "mopac_job";
-    QString rutaInputMop = QDir::tempPath() + "/" + nombreBase + ".mop";
+    if (nombreBase.isEmpty()) nombreBase = "qm_job";
 
-    // 5. Escritura del archivo de entrada de MOPAC (.mop)
-    QFile archivoMop(rutaInputMop);
-    if (!archivoMop.open(QIODevice::WriteOnly | QIODevice::Text)) {
-        m_estado.hayProceso = false;
-        notificaEstado();
-        return;
-    }
-
-    QTextStream out(&archivoMop);
-    out << argumentosEjecucion << "\n";
-    out << "VisMol Automated Task - " << nombreBase << "\n\n";
-
-    // Conversión de escala Angstrom/Píxeles
+    // Factor de conversión Angstrom/Píxeles común (1 Ángstrom = 100 píxeles de escena)
     const float PIXELES_POR_ANGSTROM = 100.0f;
-    for (const Atomo& a : m_listaAtomos) {
-        float x = a.posicion.x() / PIXELES_POR_ANGSTROM;
-        float y = a.posicion.y() / PIXELES_POR_ANGSTROM;
-        float z = a.posicion.z() / PIXELES_POR_ANGSTROM;
-        out << a.simbolo << " " << x << " 1 " << y << " 1 " << z << " 1\n";
+
+    // =========================================================================
+    // 🔀 BIFURCACIÓN DE MOTORES QUÍMICOS
+    // =========================================================================
+
+    if (metodo == 1) {
+        // ---------------------------------------------------------------------
+        // 🔥 FLUJO B: MOTOR AB INITIO / DFT (ORCA) -> Genera archivo .inp
+        // ---------------------------------------------------------------------
+        QString rutaInputInp = QDir::tempPath() + "/" + nombreBase + ".inp";
+
+        // Control de contingencia por si la cadena está vacía
+        if (m_argumentosOrca.trimmed().isEmpty()) {
+            m_argumentosOrca = "! B3LYP def2-SVP Opt RIJCOSX";
+        }
+
+        QFile archivoInp(rutaInputInp);
+        if (!archivoInp.open(QIODevice::WriteOnly | QIODevice::Text)) {
+            m_estado.hayProceso = false;
+            notificaEstado();
+            return;
+        }
+
+        QTextStream out(&archivoInp);
+        out << m_argumentosOrca << "\n";
+        out << "* xyz 0 1\n"; // Bloque de coordenadas estándar (Carga = 0, Multiplicidad = 1)
+
+        for (const Atomo& a : m_listaAtomos) {
+            float x = a.posicion.x() / PIXELES_POR_ANGSTROM;
+            float y = a.posicion.y() / PIXELES_POR_ANGSTROM;
+            float z = a.posicion.z() / PIXELES_POR_ANGSTROM;
+            out << QString("%1   %2   %3   %4\n").arg(a.simbolo).arg(x).arg(y).arg(z);
+        }
+        out << "*\n";
+        archivoInp.close();
+
+        // Guardar copia de seguridad de la conectividad (RAM -> vVismol temporal)
+        QString rutaCopiaVisMol = rutaInputInp.section('.', 0, -2) + ".vismol";
+        Datos::guardarVisMol(rutaCopiaVisMol, m_listaAtomos, m_listaEnlaces, m_comentario);
+
+        // Lanzar proceso asíncrono dedicado de ORCA
+        this->lanzarCalculoOrca(rutaInputInp, tipoCalculoFaseActual); // Reutilizamos tu slot para ORCA
     }
-    archivoMop.close();
+    else {
+        // ---------------------------------------------------------------------
+        // 🛠️ FLUJO A: MOTOR SEMIEMPÍRICO (MOPAC) -> Genera archivo .mop
+        // ---------------------------------------------------------------------
+        QString rutaInputMop = QDir::tempPath() + "/" + nombreBase + ".mop";
 
-    // Backup preventivo de la conectividad (RAM -> Disco temporal)
-    QString rutaCopiaVisMol = rutaInputMop.section('.', 0, -2) + ".vismol";
-    Datos::guardarVisMol(rutaCopiaVisMol, m_listaAtomos, m_listaEnlaces, m_comentario);
+        if (m_argumentosMopac.trimmed().isEmpty()) {
+            m_argumentosMopac = "PM7 OPT DIPOLE NOINTER";
+        }
 
-    // 6. Lanzamos el ejecutable asíncrono pasándole el tipo exacto de ESTA fase
-    this->lanzarCalculoMopac(rutaInputMop, tipoCalculoFaseActual);
+        QString argumentosEjecucion = m_argumentosMopac;
+
+        // Máquina de estados secuencial nativa de MOPAC (Fase previa OPT antes de FORCE)
+        if (tipoCalculoFaseActual == TipoCalculo::MopacFreq && !m_estado.estaOptimizado) {
+            this->setProperty("esperandoForceSecuencial", true);
+            QString metodo = m_argumentosMopac.split(' ', Qt::SkipEmptyParts).first();
+            argumentosEjecucion = metodo + " OPT DIPOLE NOINTER";
+            tipoCalculoFaseActual = TipoCalculo::MopacOpt;
+        }
+
+        QFile archivoMop(rutaInputMop);
+        if (!archivoMop.open(QIODevice::WriteOnly | QIODevice::Text)) {
+            m_estado.hayProceso = false;
+            notificaEstado();
+            return;
+        }
+
+        QTextStream out(&archivoMop);
+        out << argumentosEjecucion << "\n";
+        out << "VisMol Automated Task - " << nombreBase << "\n\n";
+
+        for (const Atomo& a : m_listaAtomos) {
+            float x = a.posicion.x() / PIXELES_POR_ANGSTROM;
+            float y = a.posicion.y() / PIXELES_POR_ANGSTROM;
+            float z = a.posicion.z() / PIXELES_POR_ANGSTROM;
+            out << a.simbolo << " " << x << " 1 " << y << " 1 " << z << " 1\n";
+        }
+        archivoMop.close();
+
+        // Guardar copia de seguridad de la conectividad
+        QString rutaCopiaVisMol = rutaInputMop.section('.', 0, -2) + ".vismol";
+        Datos::guardarVisMol(rutaCopiaVisMol, m_listaAtomos, m_listaEnlaces, m_comentario);
+
+        // Lanzar proceso asíncrono nativo de MOPAC
+        this->lanzarCalculoMopac(rutaInputMop, tipoCalculoFaseActual);
+    }
 }
 
 Estado View::getEstado(){
@@ -296,8 +338,12 @@ QString View::getRutaActual(){
     return m_rutaArchivoActual;
 }
 
-QString View::getArgumentos(){
-    return m_argumentos;
+QString View::getArgumentosMopac(){
+    return m_argumentosMopac;
+}
+
+QString View::getArgumentosOrca(){
+    return m_argumentosOrca;
 }
 
 int View::getIdAtomoSeleccionado(){
@@ -409,11 +455,18 @@ void View::setRutaActual(const QString& ruta){
     m_rutaArchivoActual = ruta;
 }
 
-void View::setArgumentos(const QString& argumentos){
-    m_argumentos = argumentos;
+void View::setArgumentosMopac(const QString& argumentos){
+    m_argumentosMopac = argumentos;
 
     notificaEstado();
 }
+
+void View::setArgumentosOrca(const QString& argumentos){
+    m_argumentosOrca = argumentos;
+
+    notificaEstado();
+}
+
 
 void View::deshacer(){
     atrasHistorial();
@@ -442,7 +495,8 @@ void View::resetValores(){
     m_contadorId          = 0;
     m_rutaArchivoActual   = "";
     m_comentario          = "";
-    m_argumentos          = "PM7 OPT DIPOLE NOINTER";
+    m_argumentosMopac     = "PM7 OPT DIPOLE NOINTER";
+    m_argumentosOrca      = "! B3LYP def2-SVP Opt RIJCOSX";
     m_ultimaPosRat        = QVector3D(-10000.0f, -10000.0f, -10000.0f);
 
     // 2.5 🎯 INICIALIZACIÓN DE VALORES DE CÁLCULO ASOCIADOS A LA INTERFAZ
@@ -826,8 +880,8 @@ void View::lanzarCalculoMopac(const QString& ruta, TipoCalculo tipoCalculo){
                         this->setProperty("esperandoForceSecuencial", false);
 
                         // Extraemos el método químico base del usuario e inyectamos el comando FORCE puro
-                        QString metodo = this->m_argumentos.split(' ', Qt::SkipEmptyParts).first();
-                        this->m_argumentos = metodo + " FORCE DIPOLE NOINTER";
+                        QString metodo = this->m_argumentosMopac.split(' ', Qt::SkipEmptyParts).first();
+                        this->m_argumentosMopac = metodo + " FORCE DIPOLE NOINTER";
 
                         // Limpieza obligatoria de archivos temporales del primer proceso antes de relanzar
                         QFile::remove(ruta);
@@ -838,7 +892,7 @@ void View::lanzarCalculoMopac(const QString& ruta, TipoCalculo tipoCalculo){
 
                         // Lanzamos el segundo cálculo de inmediato. Como ahora m_estado.estaOptimizado
                         // es true, correrá FORCE sobre las coordenadas perfectas.
-                        this->lanzarCalculoQm();
+                        this->lanzarCalculoQm(0);
                         return; // Salida crucial para ceder el control al nuevo QProcess cuántico
                     }
 
@@ -864,8 +918,51 @@ void View::lanzarCalculoMopac(const QString& ruta, TipoCalculo tipoCalculo){
     procesoMopac->start("mopac", QStringList() << ruta);
 }
 
-void View::lanzarCalculoGaussian(const QString& ruta, TipoCalculo tipoCalculo){
+void View::lanzarCalculoOrca(const QString& ruta, TipoCalculo tipoCalculo){
+    // 1. Inicialización del hilo de ejecución asíncrono
+    QProcess* procesoOrca = new QProcess(this);
+    QString rutaBase = ruta.section('.', 0, -2);
 
+    // 2. Captura y procesamiento tras finalizar la simulación cuántica
+    connect(procesoOrca, QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished),
+            this, [this, procesoOrca, ruta, rutaBase, tipoCalculo](int exitCode, QProcess::ExitStatus exitStatus) {
+
+                QString rutaOut = rutaBase + ".out";
+
+                if (exitStatus == QProcess::NormalExit && exitCode == 0) {
+                    // 🚀 Llamamos al orquestador unificado enviándole la ruta del output
+                    this->cargarOrcaResultados(rutaOut, tipoCalculo);
+                }
+                else {
+                    // Plan de contingencia si ORCA falla o converge mal
+                    QString rutaCopiaVisMol = rutaBase + ".vismol";
+                    QFile::remove(rutaCopiaVisMol);
+
+                    m_estado.hayProceso = false;
+                    notificaEstado();
+                }
+
+                // --- LIMPIEZA INTEGRAL DE BASURA CUÁNTICA ---
+                QFile::remove(ruta);
+                // NOTA: Deja de borrar rutaOut de golpe aquí si quieres inspeccionar el archivo primero
+                // QFile::remove(rutaOut);
+
+                QFile::remove(rutaBase + ".gbw");
+                QFile::remove(rutaBase + ".prop");
+                QFile::remove(rutaBase + ".densities");
+
+                procesoOrca->deleteLater();
+            });
+
+    // 🎯 REQUISITO OBLIGATORIO: Redirección del Standard Output al log físico .out
+    procesoOrca->setStandardOutputFile(rutaBase + ".out");
+
+    // 🎯 ANCLAJE DE LA RUTA ABSOLUTA REAL:
+    // Apuntamos directo a tu directorio bin de desarrollo para saltarnos el lector de pantalla de GNOME
+    QString rutaBinarioOrca = QDir::homePath() + "/bin/ORCA/orca_6_1_1_linux_x86-64_shared_openmpi418_nodmrg/orca";
+
+    // Lanzamos de forma asíncrona la simulación pasándole el .inp
+    procesoOrca->start(rutaBinarioOrca, QStringList() << ruta);
 }
 
 // =========================================================================
@@ -989,17 +1086,169 @@ void View::cargarMopacResultados(const QString& rutaOut, TipoCalculo tipoCalculo
     notificaEstado();
 }
 
-TipoCalculo View::getTipoCalculo(){
-    QString argsUpper = m_argumentos.toUpper();
+void View::cargarOrcaResultados(const QString& rutaOut, TipoCalculo tipoCalculo){
+    // 1. Derivar todos los caminos posibles de archivos en /tmp
+    QString rutaBase = rutaOut.section('.', 0, -2);
+    QString rutaXyz  = rutaBase + ".xyz";          // Optimización estática final
+    QString rutaTrj  = rutaBase + "_trj.xyz";      // Trayectoria multi-fotograma
+    QString rutaProp = rutaBase + ".property.txt"; // Propiedades clave-valor
+    QString rutaCopiaVisMol = rutaBase + ".vismol"; // Respaldo de conectividad de tu lienzo
 
-    // 🎯 Detecta de forma unívoca la Tarea 2 del combo de la interfaz
-    if (argsUpper.contains("AUX") && argsUpper.contains("OPT")) {
+    ValoresCalculo nuevosValores;
+    bool exitoCarga = false;
+
+    // Guardamos una foto preventiva en el historial de Deshacer de tu editor
+    setEstadoHistorial();
+
+    // =========================================================================
+    // 🔀 BIFURCACIÓN ESTRUCTURAL DE PARSERS SEGÚN LA VARIANTE ACTIVE
+    // =========================================================================
+    switch (tipoCalculo) {
+
+    case TipoCalculo::OrcaOpt: {
+        // -----------------------------------------------------------------
+        // VARIANT 1: OPTIMIZACIÓN PUNTUAL ESTÁTICA
+        // -----------------------------------------------------------------
+        QFile archivoXyz(rutaXyz);
+        if (archivoXyz.exists() && archivoXyz.open(QIODevice::ReadOnly | QIODevice::Text)) {
+            QTextStream streamXyz(&archivoXyz);
+            // Tu parser simétrico inyecta energía y posiciones finales en un paso
+            exitoCarga = Datos::leerOrcaFinalGeometria(streamXyz, m_listaAtomos, nuevosValores);
+            archivoXyz.close();
+        }
+
+        // Mapeamos banderas de estado estático
+        m_estado.hayTrayectoria = false;
+        m_estado.hayFrecuencias = false;
+        break;
+    }
+
+    case TipoCalculo::OrcaTrayectoria: {
+        // -----------------------------------------------------------------
+        // VARIANT 2: TRAYECTORIA COMPLETA (PELÍCULA DE OPTIMIZACIÓN)
+        // -----------------------------------------------------------------
+        QFile archivoTrj(rutaTrj);
+        if (archivoTrj.exists() && archivoTrj.open(QIODevice::ReadOnly | QIODevice::Text)) {
+            QTextStream streamTrj(&archivoTrj);
+            // Este parser llenará tu QVector<Trayectoria> m_pelicula y m_calores para la gráfica
+            // exitoCarga = Datos::leerOrcaAuxTrayectoria(streamTrj, m_pelicula, m_calores, m_listaAtomos);
+            archivoTrj.close();
+        }
+
+        if (exitoCarga && !m_pelicula.isEmpty()) {
+            m_fotogramaActual = m_pelicula.size() - 1; // Cabezal al final
+            m_listaAtomos        = m_pelicula[m_fotogramaActual].listaAtomos;
+            // Al final de la trayectoria, recuperamos la energía del último fotograma
+            nuevosValores.energia = m_pelicula[m_fotogramaActual].valoresCalculo.energia;
+            nuevosValores.calorFormacion = m_pelicula[m_fotogramaActual].valoresCalculo.calorFormacion;
+        }
+
+        m_estado.hayTrayectoria = exitoCarga;
+        m_estado.hayFrecuencias = false;
+        break;
+    }
+
+    case TipoCalculo::OrcaFreq: {
+        // -----------------------------------------------------------------
+        // VARIANT 3: MODOS VIBRACIONALES Y ESPECTRO IR
+        // -----------------------------------------------------------------
+        // Primero cargamos la geometría final (ya que Freq se corre sobre la optimizada)
+        QFile archivoXyz(rutaXyz);
+        if (archivoXyz.exists() && archivoXyz.open(QIODevice::ReadOnly | QIODevice::Text)) {
+            QTextStream streamXyz(&archivoXyz);
+            exitoCarga = Datos::leerOrcaFinalGeometria(streamXyz, m_listaAtomos, nuevosValores);
+            archivoXyz.close();
+        }
+
+        QFile archivoOut(rutaOut);
+        if (exitoCarga && archivoOut.exists() && archivoOut.open(QIODevice::ReadOnly | QIODevice::Text)) {
+            QTextStream streamOut(&archivoOut);
+            // Este parser poblará tu QVector<ModoVibracional> m_modosVibracionales
+            // Datos::leerOrcaOutSoloFrecuencias(streamOut, m_listaAtomos, m_modosVibracionales);
+            archivoOut.close();
+        }
+
+        m_estado.hayTrayectoria = false;
+        m_estado.hayFrecuencias = !m_modosVibracionales.isEmpty();
+        break;
+    }
+
+    default:
+        break;
+    }
+
+    // =========================================================================
+    // 🎛️ FASE EXTRA: COMPLETAR VALORES CUÁNTICOS ADICIONALES (DIPOLO / TIEMPO)
+    // =========================================================================
+    if (exitoCarga) {
+        QFile archivoProp(rutaProp);
+        if (archivoProp.exists() && archivoProp.open(QIODevice::ReadOnly | QIODevice::Text)) {
+            QTextStream streamProp(&archivoProp);
+            // El lector clave-valor complementa los campos vacíos (dipolo, tiempoCpu) sin pisar la geometría
+            // Datos::leerOrcaPropertySummary(streamProp, nuevosValores);
+            archivoProp.close();
+        }
+
+        // Recuperar los enlaces que dibujó el usuario en tu lienzo
+        QVector<Atomo> listaAtomosClon;
+        QString comentarioClon;
+        Datos::abrirVisMol(rutaCopiaVisMol, listaAtomosClon, m_listaEnlaces, comentarioClon);
+
+        // Si cargamos una trayectoria, inyectamos los enlaces en cada fotograma
+        if (tipoCalculo == TipoCalculo::OrcaTrayectoria) {
+            for (int i = 0; i < m_pelicula.size(); ++i) {
+                m_pelicula[i].listaEnlaces = m_listaEnlaces;
+            }
+        }
+
+        // Centrado espacial canónico e igualación de listas de renderizado
+        centrarListaAtomos(m_listaAtomos);
+        m_listaAtomosTrabajo = m_listaAtomos;
+
+        // Consolidación final de estados de la UI
+        m_valoresCalculo        = nuevosValores;
+        m_estado.modoEditor     = ModoEditor::ModoRotacion3D; // Forzar órbita de inspección
+        m_estado.estaOptimizado = true;
+        m_numeroAtomos          = m_listaAtomos.size();
+        m_numeroEnlaces         = m_listaEnlaces.size();
+        m_estado.estaModificado = false;
+    }
+
+    // =========================================================================
+    // 🧹 HIGIENE DE DISCO TEMPORAL
+    // =========================================================================
+    QFile::remove(rutaCopiaVisMol);
+    QFile::remove(rutaXyz);
+    QFile::remove(rutaProp);
+    QFile::remove(rutaTrj);
+    // Dejamos de momento el archivo .out sin borrar por si necesitas auditarlo en /tmp
+
+    m_estado.hayProceso = false; // Descongelar botones laterales de la UI
+    notificaEstado();            // Emitir actualización síncrona al Lienzo y a la Vista
+}
+
+
+TipoCalculo View::getTipoCalculo(int metodo){
+    // CASO ORCA (index 1)
+    if (metodo == 1) {
+        QString orcaUpper = m_argumentosOrca.toUpper();
+        if (orcaUpper.contains("OPT") && orcaUpper.contains("FREQ")) {
+            return TipoCalculo::OrcaFreq;
+        }
+        if (orcaUpper.contains("FREQ")) {
+            return TipoCalculo::OrcaFreq;
+        }
+        return TipoCalculo::OrcaOpt;
+    }
+
+    // CASO MOPAC (index 0)
+    QString mopacUpper = m_argumentosMopac.toUpper();
+    if (mopacUpper.contains("AUX") && mopacUpper.contains("OPT")) {
         return TipoCalculo::MopacTrayectoria;
     }
-    if (argsUpper.contains("FORCE") || argsUpper.contains("FREQ")) {
+    if (mopacUpper.contains("FORCE") || mopacUpper.contains("FREQ")) {
         return TipoCalculo::MopacFreq;
     }
-
     return TipoCalculo::MopacOpt;
 }
 

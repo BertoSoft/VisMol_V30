@@ -474,7 +474,7 @@ void Vista::configurarCalculoMopac(){
     // =================================================================================
     // 🔍 FASE DE APERTURA: Cargar el estado actual del View en los controles
     // =================================================================================
-    QString argsActuales = m_view->getArgumentos().toUpper();
+    QString argsActuales = m_view->getArgumentosMopac().toUpper();
 
     // Sincronizar Combo Método
     for(int i = 0; i < comboMetodo->count(); ++i) {
@@ -531,13 +531,181 @@ void Vista::configurarCalculoMopac(){
         QString comandoFinal = nuevosKeywords.join(" ").simplified().trimmed();
 
         // Guardamos el comando en el cerebro del programa y actualizamos el cuadro de texto
-        m_view->setArgumentos(comandoFinal);
+        m_view->setArgumentosMopac(comandoFinal);
         ui->etArgumentos->setText(comandoFinal);
     }
 }
 
-void Vista::configurarCalculoGaussian(){
+void Vista::configurarCalculoOrca(){
+    if (!m_view) return;
 
+    // 1. Crear el contenedor del diálogo nativo adaptado a ORCA
+    QDialog dlg(this);
+    dlg.setWindowTitle(tr("Configurar Parámetros de ORCA (Ab Initio/DFT)"));
+    dlg.resize(480, 260);
+
+    QVBoxLayout *layoutPrincipal = new QVBoxLayout(&dlg);
+    layoutPrincipal->setContentsMargins(20, 20, 20, 20);
+    layoutPrincipal->setSpacing(14);
+
+    QGridLayout *grid = new QGridLayout();
+    grid->setSpacing(10);
+
+    // =========================================================================
+    // 📊 COMBO A: MÉTODOS ORDENADOS DE MENOR A MAYOR CÓMPUTO
+    // =========================================================================
+    QLabel *lblMetodo = new QLabel(tr("Método / Funcional:"), &dlg);
+    QComboBox *comboMetodo = new QComboBox(&dlg);
+
+    // Métodos rápidos de bajo coste (Semi-clásicos / Hartree-Fock básicos)
+    comboMetodo->addItem("B97-3c",    "B97-3c"); // El rey de la velocidad con calidad DFT
+    comboMetodo->addItem("RHF",       "RHF");    // Hartree-Fock Restringido (Moléculas cerradas)
+    comboMetodo->addItem("UHF",       "UHF");    // Hartree-Fock No Restringido (Radicales/Abiertos)
+
+    // Funcionales DFT puros (Moderados, muy equilibrados)
+    comboMetodo->addItem("BP86",      "BP86");   // DFT Gradiente Generalizado (Muy usado en metales)
+    comboMetodo->addItem("PBE",       "PBE");    // DFT Estándar no empírico
+
+    // Funcionales Híbridos (Pesados, alta precisión para espectros/energías)
+    comboMetodo->addItem("B3LYP",     "B3LYP");  // El estándar dorado de la química orgánica
+    comboMetodo->addItem("PBE0",      "PBE0");   // Híbrido de alta precisión para estados excitados
+
+    // Métodos Post-Hartree-Fock (Extremadamente pesados, solo moléculas pequeñas)
+    comboMetodo->addItem("MP2",       "MP2");    // Perturbaciones de Møller-Plesset de 2º orden
+
+    // =========================================================================
+    // 📐 COMBO B: BASES ORDENADAS DE MENOR A MAYOR TAMAÑO MATRICIAL
+    // =========================================================================
+    QLabel *lblBase = new QLabel(tr("Base Orbital (Basis Set):"), &dlg);
+    QComboBox *comboBase = new QComboBox(&dlg);
+
+    comboBase->addItem("mini",       "mini");       // Base minimal ultra-rápida (Ideal para HF preliminar)
+    comboBase->addItem("def2-SVP",   "def2-SVP");   // Base doble-zeta (Estándar rápido para DFT)
+    comboBase->addItem("6-31G(d)",   "6-31G(d)");   // Base Pople clásica con polarización
+    comboBase->addItem("def2-TZVP",  "def2-TZVP");  // Base triple-zeta (Alta precisión, consumo elevado)
+    comboBase->addItem("cc-pVDZ",    "cc-pVDZ");    // Base de correlación consistente de Dunning
+
+    // =========================================================================
+    // 🎞️ COMBO C: TIPOS DE TAREA
+    // =========================================================================
+    QLabel *lblTarea = new QLabel(tr("Tipo de Tarea:"), &dlg);
+    QComboBox *comboTarea = new QComboBox(&dlg);
+    comboTarea->addItem(tr("1.- Pre-Optimización Ultra Rápida (Relajada)"), "Opt LooseOpt");
+    comboTarea->addItem(tr("2.- Optimización de Geometría Estándar"),       "Opt");
+    comboTarea->addItem(tr("3.- Frecuencias Vibracionales / Espectro IR"),  "Freq");
+    comboTarea->addItem(tr("4.- Optimización Completa + Frecuencias"),      "Opt Freq");
+
+    // Campo D: Keywords adicionales de terminal libre
+    QLabel *lblExtras = new QLabel(tr("Keywords Adicionales:"), &dlg);
+    QLineEdit *txtExtras = new QLineEdit(&dlg);
+    txtExtras->setPlaceholderText(tr("Ej: TightSCF Grid4"));
+
+    grid->addWidget(lblMetodo, 0, 0);   grid->addWidget(comboMetodo, 0, 1);
+    grid->addWidget(lblBase, 1, 0);     grid->addWidget(comboBase, 1, 1);
+    grid->addWidget(lblTarea, 2, 0);    grid->addWidget(comboTarea, 2, 1);
+    grid->addWidget(lblExtras, 3, 0);   grid->addWidget(txtExtras, 3, 1);
+
+    layoutPrincipal->addLayout(grid);
+
+    QDialogButtonBox *botones = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, &dlg);
+    botones->setStyleSheet(
+        "QPushButton { background-color: #334155; color: #E2E8F0; border-radius: 4px; padding: 6px 14px; }"
+        "QPushButton:hover { background-color: #475569; border-color: #38BDF8; }"
+        "QPushButton[text*='OK'] { background-color: #0EA5E9; font-weight: bold; }"
+        );
+    layoutPrincipal->addWidget(botones);
+
+    QObject::connect(botones, &QDialogButtonBox::accepted, &dlg, &QDialog::accept);
+    QObject::connect(botones, &QDialogButtonBox::rejected, &dlg, &QDialog::reject);
+
+    // =================================================================================
+    // 🔍 FASE DE APERTURA: Sincronizar el diálogo con la RAM de View
+    // =================================================================================
+    QString argsActuales = m_view->getArgumentosOrca().toUpper();
+
+    // Sincronizar Método (Buscando la Keyword en la cadena de texto)
+    for(int i = 0; i < comboMetodo->count(); ++i) {
+        if(argsActuales.contains(comboMetodo->itemText(i).toUpper())) {
+            comboMetodo->setCurrentIndex(i);
+            break;
+        }
+    }
+
+    // Sincronizar Base Orbital
+    for(int i = 0; i < comboBase->count(); ++i) {
+        if(argsActuales.contains(comboBase->itemText(i).toUpper())) {
+            comboBase->setCurrentIndex(i);
+            break;
+        }
+    }
+
+    // Sincronizar Tipo de Tarea analizando combinaciones estructurales
+    if(argsActuales.contains("OPT") && argsActuales.contains("FREQ")) {
+        comboTarea->setCurrentIndex(3);
+    } else if(argsActuales.contains("FREQ")) {
+        comboTarea->setCurrentIndex(2);
+    } else if(argsActuales.contains("LOOSEOPT")) {
+        comboTarea->setCurrentIndex(0);
+    } else {
+        comboTarea->setCurrentIndex(1);
+    }
+
+    // Filtrar los tokens fijos para dejar limpio el cuadro de palabras adicionales del usuario
+    QStringList tokensActuales = argsActuales.split(' ', Qt::SkipEmptyParts);
+    QStringList keywordsFijas = {"B3LYP", "PBE0", "BP86", "PBE", "RHF", "UHF", "MP2", "B97-3C",
+                                 "DEF2-SVP", "DEF2-TZVP", "6-31G(D)", "CC-PVDZ", "MINI",
+                                 "OPT", "FREQ", "LOOSEOPT", "!", "RIJCOSX"};
+    QStringList extrasFiltrados;
+
+    for (const QString& token : tokensActuales) {
+        if (!keywordsFijas.contains(token)) {
+            extrasFiltrados << token;
+        }
+    }
+    txtExtras->setText(extrasFiltrados.join(" "));
+
+    // =================================================================================
+    // 🚀 FASE DE CIERRE (PULSADO OK): Composición limpia de la línea de comando final
+    // =================================================================================
+    if (dlg.exec() == QDialog::Accepted) {
+        QStringList nuevosKeywords;
+
+        // ORCA exige iniciar estrictamente con la exclamación
+        nuevosKeywords << "!";
+
+        // 1. Inyectar Método Seleccionado
+        QString metodoSel = comboMetodo->currentText();
+        nuevosKeywords << metodoSel;
+
+        // 2. Inyectar Base Orbital (B97-3c ya la incluye de forma implícita, la omitimos para evitar errores de ORCA)
+        if (metodoSel != "B97-3c") {
+            nuevosKeywords << comboBase->currentText();
+        }
+
+        // 3. Inyectar Comandos de la Tarea seleccionada
+        QString tareaSeleccionada = comboTarea->currentData().toString();
+        nuevosKeywords << tareaSeleccionada.split(' ', Qt::SkipEmptyParts);
+
+        // 4. Inyectar Keywords Manuales ingresadas en el cuadro de texto
+        QString extrasTexto = txtExtras->text().trimmed();
+        if(!extrasTexto.isEmpty()) {
+            nuevosKeywords << extrasTexto.split(' ', Qt::SkipEmptyParts);
+        }
+
+        // ⚡ TRUCO DE ACELERACIÓN: Inyectar la aceleración RIJCOSX automáticamente
+        // para los funcionales híbridos densos (B3LYP, PBE0) o DFT estándar (BP86, PBE)
+        if (!nuevosKeywords.contains("RIJCOSX", Qt::CaseInsensitive) &&
+            (metodoSel == "B3LYP" || metodoSel == "PBE0" || metodoSel == "BP86" || metodoSel == "PBE")) {
+            nuevosKeywords << "RIJCOSX";
+        }
+
+        // Unificación libre de espacios duplicados
+        QString comandoFinal = nuevosKeywords.join(" ").simplified().trimmed();
+
+        // Almacenamos el resultado en el cerebro del programa y actualizamos la vista de la terminal
+        m_view->setArgumentosOrca(comandoFinal);
+        ui->etArgumentos->setText(comandoFinal);
+    }
 }
 
 void Vista::rellenarListaFrecuencias(){
@@ -660,7 +828,12 @@ void Vista::actualizarPanelResultados(const Estado& estado) {
     if (!usarPanelDerecho) return;
 
     if (m_view) {
-        ui->etArgumentos->setText(m_view->getArgumentos());
+        if(ui->comboSoftware->currentIndex()==0){
+            ui->etArgumentos->setText(m_view->getArgumentosMopac());
+        }
+        else{
+            ui->etArgumentos->setText(m_view->getArgumentosOrca());
+        }
     }
 
     // Mutación adaptativa del bloque de datos
@@ -967,12 +1140,12 @@ void Vista::on_btnConfigurarParametros_clicked(){
         configurarCalculoMopac();
     }
     else{
-        configurarCalculoGaussian();
+        configurarCalculoOrca();  // Cambiado para desplegar el panel ab initio de ORCA
     }
 }
 
 void Vista::on_btnLanzar_clicked(){
-    m_view->lanzarCalculoQm();
+    m_view->lanzarCalculoQm(ui->comboSoftware->currentIndex());
 }
 
 void Vista::on_btnPasoAtras_clicked(){
@@ -1050,7 +1223,17 @@ void Vista::on_btnPlayAnimacion_clicked(){
     }
 }
 
+void Vista::on_comboSoftware_activated(int index){
+    if (!m_view) return;
 
+    // 1. Forzamos de forma manual un disparo de actualización óptica en el visor de argumentos
+    if (index == 0) {
+        ui->etArgumentos->setText(m_view->getArgumentosMopac());
+    } else {
+        ui->etArgumentos->setText(m_view->getArgumentosOrca());
+    }
 
-
+    // 2. Refrescamos el resto del panel derecho respetando el proyecto actual
+    actualizarPanelResultados(m_view->getEstado());
+}
 

@@ -56,6 +56,12 @@ public:
         ValoresCalculo& valores
     );
 
+    static bool leerOrcaFinalGeometria(
+        QTextStream& stream,
+        QVector<Atomo>& listaAtomos,
+        ValoresCalculo& valores
+        );
+
 
 
 };

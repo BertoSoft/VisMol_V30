@@ -95,6 +95,8 @@ private slots:
 
     void on_listaFrecuencias_itemClicked(QListWidgetItem *item);
 
+    void on_comboSoftware_activated(int index);
+
 private:
     Ui::Vista *ui;
 
@@ -113,7 +115,7 @@ private:
     bool sePuedeCerrar();
     void dialogoComentario();
     void configurarCalculoMopac();
-    void configurarCalculoGaussian();
+    void configurarCalculoOrca();
     void rellenarListaFrecuencias();
     void actualizarFrameVibracion();
 

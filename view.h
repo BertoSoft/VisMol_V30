@@ -21,11 +21,11 @@ enum TipoFormato {
 
 enum TipoCalculo {
     MopacOpt,
-    GausssianOpt,
     MopacTrayectoria,
-    GAussianTrayectoria,
     MopacFreq,
-    GaussianFreq
+    OrcaOpt,
+    OrcaTrayectoria,
+    OrcaFreq
 };
 
 
@@ -108,7 +108,7 @@ public:
     void            abrirProyecto(const QString& ruta);
     void            guardarProyecto();
     void            cerrarProyecto();
-    void            lanzarCalculoQm();
+    void            lanzarCalculoQm(int metodo);
 
 
     Estado          getEstado();
@@ -119,7 +119,9 @@ public:
     int             getIdAtomoSeleccionado();
     QString         getComentario();
     QString         getRutaActual();
-    QString         getArgumentos();
+    QString         getArgumentosMopac();
+    QString         getArgumentosOrca();
+
     QVector<Trayectoria>    getPelicula() const;
     QVector<float>  getCalores();
 
@@ -137,7 +139,9 @@ public:
     void            setElementoActivo(const QString& simbolo);
     void            setModoEditor(ModoEditor modo);
     void            setComentario(const QString& comentario);
-    void            setArgumentos(const QString& argumentos);
+    void            setArgumentosMopac(const QString& argumentos);
+    void            setArgumentosOrca(const QString& argumentos);
+
     void            setRutaActual(const QString& ruta);
     void            setClick(const QVector3D& posClick);
     void            setClickDerecho(const QVector3D& posClick);
@@ -175,9 +179,10 @@ private:
     void            atrasHistorial();
     void            adelanteHistorial();
     void            cargarMopacResultados(const QString& rutaOut, TipoCalculo tipoCalculo);
-    TipoCalculo     getTipoCalculo();
+    void            cargarOrcaResultados(const QString& rutaOut, TipoCalculo tipoCalculo);
+    TipoCalculo     getTipoCalculo(int metodo);
     void            lanzarCalculoMopac(const QString& ruta, TipoCalculo tipoCalculo);
-    void            lanzarCalculoGaussian(const QString& ruta, TipoCalculo tipoCalculo);
+    void            lanzarCalculoOrca(const QString& ruta, TipoCalculo tipoCalculo);
     void            centrarListaAtomos(QVector<Atomo>& lista);
 
 
@@ -208,7 +213,10 @@ private:
     int                     m_contadorId;
     QString                 m_atomoActivo;
     QString                 m_comentario;
-    QString                 m_argumentos;
+
+    QString                 m_argumentosMopac;
+    QString                 m_argumentosOrca;
+
     QString                 m_rutaArchivoActual;
     ValoresCalculo          m_valoresCalculo;
 
