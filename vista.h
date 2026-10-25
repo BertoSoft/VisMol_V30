@@ -8,6 +8,7 @@
 #include <QMainWindow>
 #include <QButtonGroup> // Necesario para la exclusividad de los botones
 #include <QLabel>
+#include <QListWidgetItem>
 
 QT_BEGIN_NAMESPACE
 namespace Ui {
@@ -92,6 +93,8 @@ private slots:
 
     void on_btnPlayAnimacion_clicked();
 
+    void on_listaFrecuencias_itemClicked(QListWidgetItem *item);
+
 private:
     Ui::Vista *ui;
 
@@ -111,6 +114,15 @@ private:
     void dialogoComentario();
     void configurarCalculoMopac();
     void configurarCalculoGaussian();
+    void rellenarListaFrecuencias();
+    void actualizarFrameVibracion();
+
+    // 🎯 NUEVOS SUB-MÓDULOS DE SINCRONIZACIÓN DE INTERFAZ (REFALM)
+    void actualizarTituloYMetadatos(const Estado& estado);
+    void actualizarAccionesYMenus(const Estado& estado);
+    void actualizarControlesEdicion(const Estado& estado);
+    void actualizarPanelResultados(const Estado& estado);
+    void actualizarGraficaEInferior(const Estado& estado);
 
     View*           m_view              = nullptr;
     Lienzo*         m_lienzo            = nullptr;
@@ -122,7 +134,10 @@ private:
 
     QTimer*         m_timerAnimacion    = nullptr;
 
-
+    QTimer*         m_timerVibracion    = nullptr; // Temporizador dedicado al motor cuántico
+    float           m_faseVibracion     = 0.0f;    // Ángulo oscilador continuo
+    int             m_idxModoActivo     = -1;      // Índice de la RAM que se está moviendo
+    float           m_escalaVisual      = 1.0f;    // Amplitud para exagerar el movimiento del enlace
 
 
 };

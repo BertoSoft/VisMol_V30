@@ -325,25 +325,22 @@ QVector<ModoVibracional> View::getModosVibracionales() const{
 }
 
 void View::actualizarFaseVibracion(int indiceModo, float faseSenoidal, float escalaVisual) {
-    // 1. Control de seguridad: Si no hay modo seleccionado o el índice es inválido,
-    // restauramos la molécula a su estado de reposo original.
     if (indiceModo < 0 || indiceModo >= m_modosVibracionales.size()) {
         m_listaAtomosTrabajo = m_listaAtomos; // Volver al reposo inmutable
-        emit actualizarLienzo();             // Repintar síncronamente en el lienzo
+        emit actualizarLienzo();
         return;
     }
 
     const auto& desplazamientosModo = m_modosVibracionales[indiceModo].desplazamientos;
 
-    // 2. Verificación de dimensiones: MOPAC debe haber devuelto un vector 3D por cada átomo
     if (desplazamientosModo.size() == m_listaAtomos.size()) {
         for (int i = 0; i < m_listaAtomos.size(); ++i) {
-            // Posición Trabajo = Posición Base + (Vector Cuántico * Variación Armónica * Multiplicador Óptico)
+            // 🎯 ASIGNACIÓN UNITARIA: Forzamos la deformación matemática directamente en la lista de Trabajo
             m_listaAtomosTrabajo[i].posicion = m_listaAtomos[i].posicion +
                                                (desplazamientosModo[i] * faseSenoidal * escalaVisual);
         }
 
-        // 3. Disparamos la señal nativa del main.cpp directo al renderLienzo() del Lienzo
+        // Disparamos la señal nativa de Qt para alertar al lienzo de que la geometría ha cambiado
         emit actualizarLienzo();
     }
 }

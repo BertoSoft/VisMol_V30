@@ -8,6 +8,7 @@
 #include <QInputDialog>
 #include <QFileInfo>
 #include <QFileDialog>
+#include <QListWidgetItem>
 
 Vista::Vista(QWidget *parent)
     : QMainWindow(parent)
@@ -31,7 +32,10 @@ void Vista::initView(View* view){
 
 void Vista::initLienzo(Lienzo* lienzo){
     m_lienzo = lienzo;
-
+    // 🎯 EL ANCLAJE CRÍTICO: Conectamos la señal del cerebro directamente al repintado del Lienzo
+    if (m_view && m_lienzo) {
+        connect(m_view, &View::actualizarLienzo, m_lienzo, &Lienzo::renderLienzo);
+    }
 }
 
 void Vista::initUi(){
@@ -91,235 +95,33 @@ void Vista::initAnimacion(){
     m_timerAnimacion->setInterval(200);
 
     connect(m_timerAnimacion, &QTimer::timeout, this, &Vista::on_btnPasoAdelante_clicked);
+
+
+    // 🎯 REPARACIÓN CRÍTICA: Asignamos memoria real al temporizador para evitar el cuelgue
+    m_timerVibracion = new QTimer();
+    m_timerVibracion->setInterval(30);
+    connect(m_timerVibracion, &QTimer::timeout, this, &Vista::actualizarFrameVibracion);
 }
 
 //======================================================================================
 // Funciones SLOT Publicos
 //======================================================================================
 void Vista::actualizarUi(Estado estado){
-    // =================================================================================
-    // 1. VENTANA PRINCIPAL, METADATOS Y TÍTULO DINÁMICO
-    // =================================================================================
-    if (!estado.estaEmpezado) {
-        this->setWindowTitle(QString("%1 - Sin Proyecto").arg(NOMBRE_APP));
-    }
-    else {
-        QString nombreArchivo = tr("Proyecto Nuevo");
-        if (m_view && !m_view->getRutaActual().isEmpty()) {
-            nombreArchivo = QFileInfo(m_view->getRutaActual()).fileName();
-        }
 
-        QString titulo = QString("%1 | %2").arg(NOMBRE_APP).arg(nombreArchivo);
-        if (estado.estaModificado) {
-            titulo += " *";
-        }
-        this->setWindowTitle(titulo);
-    }
+    // 1. Capa de Metadatos de Aplicación y Título de Ventana
+    actualizarTituloYMetadatos(estado);
 
-    // Habilitar/Deshabilitar área de simulación principal
-    ui->visorMolecular->setEnabled(estado.estaEmpezado);
+    // 2. Capa de Permisos de Menús de Barra Superior y Acciones de Archivo
+    actualizarAccionesYMenus(estado);
 
+    // 3. Capa de Sincronización Óptica de la Barra de Herramientas Izquierda (Átomos/Modos)
+    actualizarControlesEdicion(estado);
 
-    // =================================================================================
-    // 2. ACCIONES globales, MENÚS Y BOTONES DE CONTROL (ACCIONES SÍ/NO)
-    // =================================================================================
-    // Bloque base (Siempre activos)
-    ui->actionNuevo->setEnabled(true);
-    ui->actionAbrir->setEnabled(true);
-    ui->actionSalir->setEnabled(true);
+    // 4. Capa de Intercambio Dinámico Superior Derecho (Formulario vs Lista de Frecuencias)
+    actualizarPanelResultados(estado);
 
-    // Menú Archivo dependiente de estado activo
-    ui->actionCerrar->setEnabled(estado.estaEmpezado);
-    ui->actionGuardar->setEnabled(estado.estaEmpezado && !estado.estaVacio);
-    ui->actionGuardarComo->setEnabled(estado.estaEmpezado && !estado.estaVacio);
-
-    // Menú Edición e Historial
-    ui->actionDeshacer->setEnabled(estado.hayDeshacer);
-    ui->actionRehacer->setEnabled(estado.hayRehacer);
-    ui->actionComentarioProyecto->setEnabled(estado.estaEmpezado && !estado.estaVacio);
-    ui->actionLimpiarLienzo->setEnabled(estado.estaEmpezado && !estado.estaVacio);
-
-    // Procesos cuánticos y abortar
-    ui->actionDetenerSimulacion->setEnabled(estado.estaEmpezado && estado.hayProceso);
-    ui->btnAbortar->setEnabled(estado.estaEmpezado && estado.hayProceso);
-
-
-    // =================================================================================
-    // 3. BARRA LATERAL IZQUIERDA (HERRAMIENTAS DE EDICIÓN Y ATOMOS)
-    // =================================================================================
-    if (estado.estaEmpezado) {
-        ui->barraIzda->setEnabled(true);
-        ui->btnSeleccion->setChecked(estado.modoEditor == ModoEditor::ModoSeleccion);
-        ui->btnModoEnlace->setChecked(estado.modoEditor == ModoEditor::ModoCrearEnlace);
-        ui->btnModoRotar->setChecked(estado.modoEditor == ModoEditor::ModoRotacion3D);
-    }
-    else {
-        ui->barraIzda->setEnabled(false);
-        m_grupoIzdo->setExclusive(false);
-        if (m_grupoIzdo->checkedButton()) {
-            m_grupoIzdo->checkedButton()->setChecked(false);
-        }
-        m_grupoIzdo->setExclusive(true);
-    }
-
-
-    // =================================================================================
-    // 4. BARRA LATERAL DERECHA SUPERIOR (INTERCAMBIO: RESULTADOS VS LISTA FREQUENCIAS)
-    // =================================================================================
-    int numeroAtomos = m_view ? m_view->getListaAtomos().count() : 0;
-    bool usarPanelDerecho = (estado.estaEmpezado && numeroAtomos > 1);
-    ui->barraDerecha->setEnabled(usarPanelDerecho);
-
-    if (usarPanelDerecho) {
-        if (m_view) {
-            ui->etArgumentos->setText(m_view->getArgumentos());
-        }
-
-        // 🎯 LÓGICA DE INTERCAMBIO ATÓMICO INTERNO
-        if (estado.hayFrecuencias) {
-            // Caso Espectro IR: Ocultamos los componentes individuales de la rejilla de datos
-            ui->lblTituloResultados->setText(tr("📈 MODOS VIBRACIONALES DETECTADOS"));
-
-            // Ocultamos todos los elementos del formLayout uno a uno de forma segura
-            for (int i = 0; i < ui->formLayoutResultados->count(); ++i) {
-                if (QWidget* w = ui->formLayoutResultados->itemAt(i)->widget()) {
-                    w->setVisible(false);
-                }
-            }
-
-            // Mostramos la lista de frecuencias en el espacio superior liberado
-            ui->listaFrecuencias->setVisible(true);
-            ui->listaFrecuencias->setEnabled(!estado.hayProceso);
-        }
-        else {
-            // Caso Optimización / Trayectoria: Restauramos el panel estándar
-            ui->lblTituloResultados->setText(tr("📊 RESULTADOS Y ESTADO DEL CÁLCULO"));
-            ui->listaFrecuencias->setVisible(false); // Ocultamos la lista de la zona alta
-
-            // Volvemos a visibilizar los labels individuales del formulario
-            for (int i = 0; i < ui->formLayoutResultados->count(); ++i) {
-                if (QWidget* w = ui->formLayoutResultados->itemAt(i)->widget()) {
-                    w->setVisible(true);
-                }
-            }
-
-            // Sincronizamos los datos desde la RAM del cerebro si no hay simulación activa
-            if (!estado.hayProceso && m_view) {
-                ValoresCalculo valores = m_view->getValoresCalculo();
-                ui->lblEstado->setText(estado.hayTrayectoria ? tr("Paso de Optimización %1").arg(m_view->getFotogramaActual() + 1) : tr("Listo / Estacionario"));
-                ui->lblEnergia->setText(valores.energia);
-                ui->lblCalorFormacion->setText(valores.calorFormacion);
-                ui->lblIonizacion->setText(valores.ionizacion);
-                ui->lblSimetria->setText(valores.simetria);
-                ui->lblDipolo->setText(valores.dipolo);
-                ui->lblTiempoCpu->setText(valores.tiempoCpu);
-            }
-        }
-    }
-
-    // =================================================================================
-    // 5. PANEL INFERIOR DERECHO (WIDGET GRÁFICA ATÓMICO: CURVAS VS ESPECTRO IR)
-    // =================================================================================
-    bool tieneConvergenciaNormal = (estado.estaOptimizado && m_view && !m_view->getCalores().isEmpty());
-    ui->wGrafica->setEnabled(usarPanelDerecho);
-
-    if (estado.hayTrayectoria) {
-        // Escenario A: Modo Película / Trayectoria Dinámica activa
-        ui->lblTituloFreq->setText(tr("🎞️ PERFIL DE TRAYECTORIA ENERGÉTICA"));
-        ui->wGrafica->setVisible(true);
-        ui->frameTrayectoria->setVisible(true);
-
-        if (m_view) {
-            ui->wGrafica->setDatos(m_view->getPelicula());
-            ui->wGrafica->setPasoActual(m_view->getFotogramaActual());
-        }
-    }
-    else if (tieneConvergenciaNormal) {
-        // Escenario B: Optimización convencional (Curva estática del .out)
-        if (m_timerAnimacion && m_timerAnimacion->isActive()) {
-            m_timerAnimacion->stop();
-            ui->btnPlayAnimacion->setText(tr("▶️ Play"));
-        }
-        ui->frameTrayectoria->setVisible(false);
-
-        ui->lblTituloFreq->setText(tr("📊 CURVA DE CONVERGENCIA ENERGÉTICA"));
-        ui->wGrafica->setVisible(true);
-
-        if (m_view) {
-            ui->wGrafica->setDatosCalores(m_view->getCalores());
-            ui->wGrafica->setPasoActual(m_view->getCalores().size() - 1);
-        }
-    }
-    else if (estado.hayFrecuencias) {
-        // Escenario C: Espectroscopia (WIDGET COMPLETO ABAJO PARA EL ESPECTRO IR)
-        if (m_timerAnimacion && m_timerAnimacion->isActive()) {
-            m_timerAnimacion->stop();
-            ui->btnPlayAnimacion->setText(tr("▶️ Play"));
-        }
-        ui->frameTrayectoria->setVisible(false);
-
-        ui->lblTituloFreq->setText(tr("📈 ESPECTRO DE ABSORCIÓN INFRARROJA (IR)"));
-        ui->wGrafica->setVisible(true); // Se queda expandido ocupando toda la base
-
-        if (m_view) {
-            // Aquí acoplaremos mañana el motor matemático de transmitancia
-            // ui->wGrafica->setDatosEspectro(m_view->getNumerosOnda(), m_view->getIntensidades());
-        }
-    }
-    else {
-        // Escenario D: Reposo / Vacío (Mantenemos la gráfica limpia para conservar el color oscuro)
-        if (m_timerAnimacion && m_timerAnimacion->isActive()) {
-            m_timerAnimacion->stop();
-            ui->btnPlayAnimacion->setText(tr("▶️ Play"));
-        }
-        ui->frameTrayectoria->setVisible(false);
-
-        ui->lblTituloFreq->setText("");
-        ui->wGrafica->setVisible(true);
-
-        QVector<float> vacio;
-        ui->wGrafica->setDatosCalores(vacio);
-    }
-
-    // =================================================================================
-    // 6. SINCRONIZACIÓN DE LA LÍNEA DE TIEMPO (SLIDER DE PASOS)
-    // =================================================================================
-    if (estado.estaEmpezado && estado.hayTrayectoria && m_view) {
-        ui->sliderPasos->blockSignals(true);
-        ui->sliderPasos->setRange(0, m_view->getNumeroFotogramas() - 1);
-        ui->sliderPasos->setValue(m_view->getFotogramaActual());
-        ui->sliderPasos->blockSignals(false);
-    }
-    else {
-        ui->sliderPasos->setRange(0, 0);
-        ui->sliderPasos->setValue(0);
-    }
-
-
-    // =================================================================================
-    // 7. BARRA DE ESTADO INFERIOR (CONSEJOS AL USUARIO)
-    // =================================================================================
-    if (!estado.estaEmpezado) {
-        m_lblMesaje->setText(tr(" Listo. Cree un nuevo proyecto o abra un archivo para comenzar."));
-    }
-    else {
-        QString txt = "";
-        switch (estado.modoEditor) {
-        case ModoSeleccion:
-            txt = tr(" Modo Selección | Use el puntero para interactuar con los átomos.");
-            break;
-        case ModoCrearEnlace:
-            txt = tr(" Modo Enlace 🔗 | Seleccione dos átomos para enlazarlos.");
-            break;
-        case ModoRotacion3D:
-            txt = tr(" Modo Rotación 3D 🔄 | Arrastre el lienzo para orbitar la molécula.");
-            break;
-        case ModoDibujo:
-            txt = tr(" Modo Dibujo 🧪 | Añadiendo elemento: %1 (Clic en lienzo para colocar)").arg(m_view->getAtomoActivo());
-            break;
-        }
-        m_lblMesaje->setText(txt);
-    }
+    // 5. Capa Espectroscópica e Inferior (Curvas, Perfiles y Automatización de Arranque IR)
+    actualizarGraficaEInferior(estado);
 }
 
 void Vista::setMenuBotonDerecho(int idAtomo, int idEnlace){
@@ -347,7 +149,6 @@ void Vista::setMenuBotonDerecho(int idAtomo, int idEnlace){
         return;
     }
 }
-
 
 //======================================================================================
 // Funciones Privadas
@@ -621,7 +422,6 @@ void Vista::dialogoComentario(){
     }
 }
 
-
 void Vista::configurarCalculoMopac(){
     if (!m_view) return;
 
@@ -738,6 +538,288 @@ void Vista::configurarCalculoMopac(){
 
 void Vista::configurarCalculoGaussian(){
 
+}
+
+void Vista::rellenarListaFrecuencias(){
+    // 1. Limpieza total preventiva del componente visual
+    ui->listaFrecuencias->clear();
+
+    // 2. Recuperamos el vector completo de modos vibracionales que ya parseó el cerebro
+    QVector<ModoVibracional> modos = m_view->getModosVibracionales();
+
+    // 3. Recorremos los modos usando el índice 'i' para no perder la referencia real en la RAM
+    for (int i = 0; i < modos.size(); ++i) {
+        const ModoVibracional& modo = modos[i];
+
+        // 🎯 TU FILTRO STRICTOR: Solo entran si tienen actividad en el infrarrojo (Intensidad > 0)
+        if (modo.intensidad >= 0.0f) {
+
+            // Construimos una cadena de texto elegante y legible para el usuario
+            QString textoItem = QString("%1: %2 cm⁻¹ Int: %3")
+                                    .arg(modo.numero, 2) // Reserva mínimo 2 dígitos para mantener la alineación
+                                    .arg(modo.frecuencia, 7, 'f', 2)
+                                    .arg(modo.intensidad, 6, 'f', 2);
+
+
+            // Creamos el elemento físico para la lista
+            QListWidgetItem* item = new QListWidgetItem(textoItem);
+
+            // 💡 TRUCO DE QT: Guardamos el índice real 'i' dentro del propio ítem (UserRole).
+            // Como la lista visual tendrá menos elementos que el vector original (debido al filtro),
+            // esto nos garantizará saber exactamente qué modo de la RAM pulsó el usuario más adelante.
+            item->setData(Qt::UserRole, i);
+
+            // Lo añadimos al widget
+            ui->listaFrecuencias->addItem(item);
+        }
+    }
+}
+
+void Vista::actualizarFrameVibracion(){
+    if (m_idxModoActivo < 0) return;
+
+    m_faseVibracion += 0.25f;
+    if (m_faseVibracion > 2.0f * M_PI) {
+        m_faseVibracion -= 2.0f * M_PI;
+    }
+
+    float valorSenoidal = qSin(m_faseVibracion);
+
+    if (m_view) {
+        // 1. El cerebro deforma m_listaAtomosTrabajo y emite 'actualizarLienzo'
+        m_view->actualizarFaseVibracion(m_idxModoActivo, valorSenoidal, m_escalaVisual);
+    }
+
+    // 2. La vista se limita a repintar el viewport gráfico con los nuevos ítems de la escena
+    if (m_lienzo) {
+        m_lienzo->viewport()->update();
+    }
+}
+
+void Vista::actualizarTituloYMetadatos(const Estado& estado) {
+    if (!estado.estaEmpezado) {
+        this->setWindowTitle(QString("%1 - Sin Proyecto").arg(NOMBRE_APP));
+    } else {
+        QString nombreArchivo = tr("Proyecto Nuevo");
+        if (m_view && !m_view->getRutaActual().isEmpty()) {
+            nombreArchivo = QFileInfo(m_view->getRutaActual()).fileName();
+        }
+
+        QString titulo = QString("%1 | %2").arg(NOMBRE_APP).arg(nombreArchivo);
+        if (estado.estaModificado) {
+            titulo += " *";
+        }
+        this->setWindowTitle(titulo);
+    }
+    ui->visorMolecular->setEnabled(estado.estaEmpezado);
+}
+
+void Vista::actualizarAccionesYMenus(const Estado& estado) {
+    // Bloque inmutable (Siempre activos)
+    ui->actionNuevo->setEnabled(true);
+    ui->actionAbrir->setEnabled(true);
+    ui->actionSalir->setEnabled(true);
+
+    // Acciones de persistencia en disco
+    ui->actionCerrar->setEnabled(estado.estaEmpezado);
+    ui->actionGuardar->setEnabled(estado.estaEmpezado && !estado.estaVacio);
+    ui->actionGuardarComo->setEnabled(estado.estaEmpezado && !estado.estaVacio);
+
+    // Historial y Edición Estructural
+    ui->actionDeshacer->setEnabled(estado.hayDeshacer);
+    ui->actionRehacer->setEnabled(estado.hayRehacer);
+    ui->actionComentarioProyecto->setEnabled(estado.estaEmpezado && !estado.estaVacio);
+    ui->actionLimpiarLienzo->setEnabled(estado.estaEmpezado && !estado.estaVacio);
+
+    // Procesos de Computación Química Asíncronos
+    ui->actionDetenerSimulacion->setEnabled(estado.estaEmpezado && estado.hayProceso);
+    ui->btnAbortar->setEnabled(estado.estaEmpezado && estado.hayProceso);
+}
+
+void Vista::actualizarControlesEdicion(const Estado& estado) {
+    if (estado.estaEmpezado) {
+        ui->barraIzda->setEnabled(true);
+        ui->btnSeleccion->setChecked(estado.modoEditor == ModoEditor::ModoSeleccion);
+        ui->btnModoEnlace->setChecked(estado.modoEditor == ModoEditor::ModoCrearEnlace);
+        ui->btnModoRotar->setChecked(estado.modoEditor == ModoEditor::ModoRotacion3D);
+    } else {
+        ui->barraIzda->setEnabled(false);
+        m_grupoIzdo->setExclusive(false);
+        if (m_grupoIzdo->checkedButton()) {
+            m_grupoIzdo->checkedButton()->setChecked(false);
+        }
+        m_grupoIzdo->setExclusive(true);
+    }
+}
+
+void Vista::actualizarPanelResultados(const Estado& estado) {
+    int numeroAtomos = m_view ? m_view->getListaAtomos().count() : 0;
+    bool usarPanelDerecho = (estado.estaEmpezado && numeroAtomos > 1);
+    ui->barraDerecha->setEnabled(usarPanelDerecho);
+
+    if (!usarPanelDerecho) return;
+
+    if (m_view) {
+        ui->etArgumentos->setText(m_view->getArgumentos());
+    }
+
+    // Mutación adaptativa del bloque de datos
+    ui->listaFrecuencias->setVisible(estado.hayFrecuencias);
+    ui->listaFrecuencias->setEnabled(!estado.hayProceso);
+
+    for (int i = 0; i < ui->formLayoutResultados->count(); ++i) {
+        if (QWidget* w = ui->formLayoutResultados->itemAt(i)->widget()) {
+            w->setVisible(!estado.hayFrecuencias); // Ocultar si hay espectro, mostrar si no
+        }
+    }
+
+    if (estado.hayFrecuencias) {
+        ui->lblTituloResultados->setText(tr("📈 MODOS VIBRACIONALES DETECTADOS"));
+        rellenarListaFrecuencias();
+    } else {
+        ui->lblTituloResultados->setText(tr("📊 RESULTADOS Y ESTADO DEL CÁLCULO"));
+        if (!estado.hayProceso && m_view) {
+            ValoresCalculo valores = m_view->getValoresCalculo();
+            ui->lblEstado->setText(estado.hayTrayectoria ? tr("Paso de Optimización %1").arg(m_view->getFotogramaActual() + 1) : tr("Listo / Estacionario"));
+            ui->lblEnergia->setText(valores.energia);
+            ui->lblCalorFormacion->setText(valores.calorFormacion);
+            ui->lblIonizacion->setText(valores.ionizacion);
+            ui->lblSimetria->setText(valores.simetria);
+            ui->lblDipolo->setText(valores.dipolo);
+            ui->lblTiempoCpu->setText(valores.tiempoCpu);
+        }
+    }
+}
+
+void Vista::actualizarGraficaEInferior(const Estado& estado) {
+    int numeroAtomos = m_view ? m_view->getListaAtomos().count() : 0;
+    bool usarPanelDerecho = (estado.estaEmpezado && numeroAtomos > 1);
+    ui->wGrafica->setEnabled(usarPanelDerecho);
+
+    bool esperandoSegundaFase = m_view ? m_view->property("esperandoForceSecuencial").toBool() : false;
+    bool tieneConvergenciaNormal = (estado.estaOptimizado && m_view && !m_view->getCalores().isEmpty() && !esperandoSegundaFase);
+
+    // =========================================================================
+    // 🎞️ CASO A: REPRODUCCIÓN DINÁMICA DE LA PELÍCULA (.AUX)
+    // =========================================================================
+    if (estado.hayTrayectoria) {
+        ui->lblTituloFreq->setText(tr("🎞️ PERFIL DE TRAYECTORIA ENERGÉTICA"));
+        ui->wGrafica->setVisible(true);
+        ui->frameTrayectoria->setVisible(true);
+
+        if (m_view) {
+            ui->wGrafica->setDatos(m_view->getPelicula());
+            ui->wGrafica->setPasoActual(m_view->getFotogramaActual());
+        }
+
+        ui->sliderPasos->blockSignals(true);
+        ui->sliderPasos->setRange(0, m_view->getNumeroFotogramas() - 1);
+        ui->sliderPasos->setValue(m_view->getFotogramaActual());
+        ui->sliderPasos->blockSignals(false);
+        return;
+    }
+
+    // Limpieza reglamentaria de componentes de la línea de tiempo de la película para los demás casos
+    if (m_timerAnimacion && m_timerAnimacion->isActive()) {
+        m_timerAnimacion->stop();
+        ui->btnPlayAnimacion->setText(tr("▶️ Play"));
+    }
+    ui->frameTrayectoria->setVisible(false);
+    ui->sliderPasos->setRange(0, 0);
+    ui->sliderPasos->setValue(0);
+
+    // =========================================================================
+    // 📈 CASO B: ESPECTRO DE ABSORCIÓN INFRARROJA ACTIVO
+    // =========================================================================
+    if (estado.hayFrecuencias) {
+        ui->lblTituloFreq->setText(tr("📈 ESPECTRO DE ABSORCIÓN INFRARROJA (IR)"));
+        ui->wGrafica->setVisible(true);
+
+        // 🎯 INTERCEPCIÓN DE EDICIÓN: Si el usuario cambia a ModoSeleccion, ModoDibujo o ModoEnlace,
+        // congelamos la animación cuántica de golpe para que pueda trabajar sobre la estructura estática.
+        if (estado.modoEditor != ModoEditor::ModoRotacion3D) {
+            if (m_timerVibracion && m_timerVibracion->isActive()) {
+                m_timerVibracion->stop();
+                m_idxModoActivo = -1;
+
+                // 💎 RESTAURACIÓN INMUTABLE: Le pasamos -1 al cerebro.
+                // Esto fuerza a que m_listaAtomosTrabajo se iguale síncronamente a m_listaAtomos (reposo)
+                // y emita 'actualizarLienzo()' automáticamente.
+                if (m_view) {
+                    m_view->actualizarFaseVibracion(-1, 0.0f, 0.0f);
+                }
+
+                // Limpiamos también el resaltado rojo de la gráfica para ser coherentes visualmente
+                ui->wGrafica->setModoActivo(-1);
+            }
+        }
+
+        if (m_view) {
+            ui->wGrafica->setDatosEspectro(m_view->getModosVibracionales());
+
+            // 🎯 El arranque automático SOLO se producirá si el usuario vuelve a ModoRotacion3D
+            if (ui->listaFrecuencias->count() > 0 && estado.modoEditor == ModoEditor::ModoRotacion3D &&
+                m_timerVibracion && !m_timerVibracion->isActive()) {
+
+                ui->listaFrecuencias->setCurrentRow(0);
+
+                QListWidgetItem* primerItem = ui->listaFrecuencias->item(0);
+                m_idxModoActivo = primerItem->data(Qt::UserRole).toInt();
+
+                QVector<ModoVibracional> modos = m_view->getModosVibracionales();
+                if (m_idxModoActivo >= 0 && m_idxModoActivo < modos.size()) {
+                    ui->wGrafica->setModoActivo(modos[m_idxModoActivo].numero);
+                }
+
+                m_faseVibracion = 0.0f;
+                m_timerVibracion->start(30);
+            }
+        }
+    }
+    // =========================================================================
+    // 📊 CASO C: CURVA DE CONVERGENCIA ESTÁTICA
+    // =========================================================================
+    else if (tieneConvergenciaNormal && !estado.hayFrecuencias) {
+        ui->lblTituloFreq->setText(tr("📊 CURVA DE CONVERGENCIA ENERGÉTICA"));
+        ui->wGrafica->setVisible(true);
+
+        if (m_view) {
+            ui->wGrafica->setDatosCalores(m_view->getCalores());
+            ui->wGrafica->setPasoActual(m_view->getCalores().size() - 1);
+        }
+    }
+    // =========================================================================
+    // 💤 CASO D: REPOSO ABSOLUTO O TRANSICIÓN INTERMEDIA
+    // =========================================================================
+    else {
+        if (m_timerVibracion && m_timerVibracion->isActive() && !estado.hayFrecuencias) {
+            m_timerVibracion->stop();
+            m_idxModoActivo = -1;
+            if (m_view) m_view->actualizarFaseVibracion(-1, 0.0f, 0.0f);
+        }
+
+        ui->lblTituloFreq->setText(esperandoSegundaFase ? tr("⏳ OPTIMIZACIÓN LISTA. CALCULANDO MODOS VIBRACIONALES...") : "");
+        ui->wGrafica->setVisible(true);
+
+        QVector<ModoVibracional> vacio;
+        ui->wGrafica->setDatosEspectro(vacio);
+    }
+
+    // =========================================================================
+    // 💬 7. BARRA DE CONSEJOS EN EL SUELO DE LA INTERFAZ
+    // =========================================================================
+    if (!estado.estaEmpezado) {
+        m_lblMesaje->setText(tr(" Listo. Cree un nuevo proyecto o abra un archivo para comenzar."));
+    } else {
+        QString txt = "";
+        switch (estado.modoEditor) {
+        case ModoSeleccion:   txt = tr(" Modo Selección | Use el puntero para interactuar con los átomos."); break;
+        case ModoCrearEnlace: txt = tr(" Modo Enlace 🔗 | Seleccione dos átomos para enlazarlos."); break;
+        case ModoRotacion3D:  txt = tr(" Modo Rotación 3D 🔄 | Arrastre el lienzo para orbitar la molécula."); break;
+        case ModoDibujo:      txt = tr(" Modo Dibujo 🧪 | Añadiendo elemento: %1 (Clic en lienzo para colocar)").arg(m_view->getAtomoActivo()); break;
+        }
+        m_lblMesaje->setText(txt);
+    }
 }
 
 
@@ -922,6 +1004,26 @@ void Vista::on_btnPasoAdelante_clicked(){
     ui->wGrafica->setPasoActual(m_view->getFotogramaActual());
 }
 
+void Vista::on_listaFrecuencias_itemClicked(QListWidgetItem *item){
+    if (!item || !m_timerVibracion || !m_view) return;
+
+    m_timerVibracion->stop();
+
+    // 1. m_idxModoActivo sigue guardando el índice de la RAM para la simulación de átomos
+    m_idxModoActivo = item->data(Qt::UserRole).toInt();
+
+    // 2. Recuperamos el vector original para extraer el número de modo real de este ítem
+    QVector<ModoVibracional> modos = m_view->getModosVibracionales();
+    if (m_idxModoActivo >= 0 && m_idxModoActivo < modos.size()) {
+        int numeroModoReal = modos[m_idxModoActivo].numero;
+
+        // 🎯 SINCRO PERFECTA: Le pasamos el número identificativo a la gráfica (ej: 19)
+        ui->wGrafica->setModoActivo(numeroModoReal);
+    }
+
+    m_faseVibracion = 0.0f;
+    m_timerVibracion->start(30);
+}
 
 void Vista::on_sliderPasos_valueChanged(int value){
     if(!m_view || !m_view->getEstado().hayTrayectoria) return;
@@ -947,4 +1049,8 @@ void Vista::on_btnPlayAnimacion_clicked(){
         ui->btnPlayAnimacion->setText(tr("▶️ Play"));
     }
 }
+
+
+
+
 

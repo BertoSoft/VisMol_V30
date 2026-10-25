@@ -461,6 +461,9 @@ bool Datos::leerMopacOutSoloFrecuencias(
     // =========================================================================
     // 4. EXTRACCIÓN DINÁMICA TRIDIMENSIONAL
     // =========================================================================
+    // 📐 FACTOR_ANGSTROM ÚNICO: 1 Ángstrom = 100 píxeles de escena
+    const float PIXELES_POR_ANGSTROM = 100.0f;
+
     for (int i = 0; i < lineasEstructura.size(); ++i) {
         QRegularExpressionMatch match = regexFilaDesplazamiento.match(lineasEstructura[i]);
         if (match.hasMatch()) {
@@ -479,6 +482,10 @@ bool Datos::leerMopacOutSoloFrecuencias(
             while (itColumnas.hasNext()) {
                 float valorDesplazamiento = itColumnas.next().captured(1).toFloat();
 
+                // 🎯 LA CLAVE: Multiplicamos el desplazamiento de MOPAC por 100
+                // para transformar Ángstroms en píxeles visibles de lienzo
+                float valorEscaladoPixel = valorDesplazamiento * PIXELES_POR_ANGSTROM;
+
                 int columnasPreviasTotales = 0;
                 for (int b = 0; b < bloqueVerticalActual; ++b) {
                     columnasPreviasTotales += columnasLeidasPorBloqueVertical.value(b, 0);
@@ -487,12 +494,14 @@ bool Datos::leerMopacOutSoloFrecuencias(
                 int columnaGlobal = columnasPreviasTotales + columnaLocalDelBloque;
 
                 if (!mapaFrecuencias.contains(columnaGlobal)) {
+                    columnaLocalDelBloque++;
                     continue;
                 }
 
-                if (ejeActivo == 0) mapaDesplazamientos[columnaGlobal][idAtomoMapeado].setX(valorDesplazamiento);
-                if (ejeActivo == 1) mapaDesplazamientos[columnaGlobal][idAtomoMapeado].setY(valorDesplazamiento);
-                if (ejeActivo == 2) mapaDesplazamientos[columnaGlobal][idAtomoMapeado].setZ(valorDesplazamiento);
+                // Inyectamos el valor escalado a píxeles según el eje espacial activo
+                if (ejeActivo == 0) mapaDesplazamientos[columnaGlobal][idAtomoMapeado].setX(valorEscaladoPixel);
+                if (ejeActivo == 1) mapaDesplazamientos[columnaGlobal][idAtomoMapeado].setY(valorEscaladoPixel);
+                if (ejeActivo == 2) mapaDesplazamientos[columnaGlobal][idAtomoMapeado].setZ(valorEscaladoPixel);
 
                 if (idFilaMatriz == totalLineasCartesianasPorBloque) {
                     columnasLeidasPorBloqueVertical[bloqueVerticalActual] = columnaLocalDelBloque + 1;
@@ -530,12 +539,13 @@ bool Datos::leerMopacOutSoloFrecuencias(
             ModoVibracional modo;
             modo.numero = m_modosVibracionales.size() + 1;
             modo.frecuencia = valorCm1;
-            modo.intensidad = 0.0f; // Inicializado a cero por seguridad
+
+            // 🎯 CAMBIO 1: Inicializamos con un valor centinela negativo por defecto
+            modo.intensidad = -1.0f;
+
             modo.desplazamientos = desplazamientosModo;
 
-            // Guardamos la correlación: "La columna global i (que equivale a Root No. i+1) es el modo X de la RAM"
             mapaRootNoAModoFiltrado[i + 1] = m_modosVibracionales.size();
-
             m_modosVibracionales.append(modo);
         }
     }
@@ -571,9 +581,8 @@ bool Datos::leerMopacOutSoloFrecuencias(
                     if (matchVal.hasMatch()) {
                         float dipolo = matchVal.captured(1).toFloat();
 
-                        // 🎯 Clave espectroscópica: La intensidad de la banda es proporcional
-                        // al cuadrado del momento dipolar de transición.
                         int idxModoDestino = mapaRootNoAModoFiltrado[rootNoActual];
+                        // 🎯 Al sobreescribir aquí, los modos que sí tienen espectro pasan a ser >= 0
                         m_modosVibracionales[idxModoDestino].intensidad = dipolo * dipolo;
                     }
                 }
