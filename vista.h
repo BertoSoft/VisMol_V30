@@ -97,6 +97,10 @@ private slots:
 
     void on_comboSoftware_activated(int index);
 
+    void on_btnAbortar_clicked();
+
+    void on_actionDetenerSimulacion_triggered();
+
 private:
     Ui::Vista *ui;
 

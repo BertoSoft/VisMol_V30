@@ -326,24 +326,28 @@ void Vista::stopAnimaciones(const Estado& estado) {
     m_idxModoActivo = -1;
     ui->wGrafica->setModoActivo(-1);
 
-    // Fuerza a la molécula a volver a sus coordenadas estáticas de equilibrio
+    // 🎯 REPARACIÓN: Si el modo de edición NO es rotación, forzamos el reposo de la molécula
     if (m_view) {
-        m_view->actualizarFaseVibracion(-1, 0.0f, 0.0f);
+        if (estado.modoEditor != ModoEditor::ModoRotacion3D) {
+            m_view->actualizarFaseVibracion(-1, 0.0f, 0.0f); // Limpia la deformación en la RAM
+        } else if (m_timerVibracion && !m_timerVibracion->isActive() && estado.hayFrecuencias) {
+            // Si es rotación pero el timer se paró por error, dejamos que conserve el reposo
+            m_view->actualizarFaseVibracion(-1, 0.0f, 0.0f);
+        }
     }
 
     // 2. Detener y limpiar la animación de Trayectorias (Película)
-    if (m_timerAnimacion && m_timerAnimacion->isActive()) {
-        m_timerAnimacion->stop();
-    }
-    ui->btnPlayAnimacion->setText(tr("▶️ Play"));
-
-    if (m_view && !estado.hayTrayectoria) {
+    if (!estado.hayTrayectoria) {
+        if (m_timerAnimacion && m_timerAnimacion->isActive()) {
+            m_timerAnimacion->stop();
+        }
+        ui->btnPlayAnimacion->setText(tr("▶️ Play"));
         ui->frameTrayectoria->setVisible(false);
         ui->sliderPasos->setRange(0, 0);
         ui->sliderPasos->setValue(0);
     }
 
-    // 3. 🎯 SINCRO DE LA BARRA DE ESTADO: Restaurar mensajes dinámicos de edición
+    // 3. SINCRO DE LA BARRA DE ESTADO... (dejar como estaba)
     if (!estado.estaEmpezado) {
         m_lblMesaje->setText(tr(" Listo. Cree un nuevo proyecto o abra un archivo para comenzar."));
     } else {
@@ -840,6 +844,10 @@ void Vista::actualizarAccionesYMenus(const Estado& estado) {
     // Procesos de Computación Química Asíncronos
     ui->actionDetenerSimulacion->setEnabled(estado.estaEmpezado && estado.hayProceso);
     ui->btnAbortar->setEnabled(estado.estaEmpezado && estado.hayProceso);
+
+    // 🎯 REPARACIÓN DE SEGURIDAD: Bloqueamos el lanzamiento si ya hay un cálculo corriendo
+    // para evitar colisiones cuánticas de archivos en el directorio /tmp
+    ui->btnLanzar->setEnabled(estado.estaEmpezado && !estado.hayProceso);
 }
 
 void Vista::actualizarControlesEdicion(const Estado& estado) {
@@ -863,7 +871,12 @@ void Vista::actualizarPanelResultados(const Estado& estado) {
     bool usarPanelDerecho = (estado.estaEmpezado && numeroAtomos > 1);
     ui->barraDerecha->setEnabled(usarPanelDerecho);
 
-    if (!usarPanelDerecho) return;
+    if (!usarPanelDerecho) {
+        // 🎯 REPARACIÓN: Si el panel se bloquea, limpiamos los residuos visuales inmediatamente
+        ui->listaFrecuencias->clear();
+        ui->lblTituloResultados->setText(tr("📊 RESULTADOS Y ESTADO DEL CÁLCULO"));
+        return;
+    }
 
     if (m_view) {
         if(ui->comboSoftware->currentIndex()==0){
@@ -884,12 +897,26 @@ void Vista::actualizarPanelResultados(const Estado& estado) {
         }
     }
 
-    if (estado.hayFrecuencias) {
+    // 🎯 REINICIO ADAPTATIVO MIENTRAS SE EJECUTA EL PROCESO
+    if (estado.hayProceso) {
+        ui->lblTituloResultados->setText(tr("⏳ CÁLCULO EN PROCESO..."));
+        ui->listaFrecuencias->clear(); // Vaciamos la lista visual por completo
+
+        // Forzamos el estado visual a vacío en el formulario
+        ui->lblEstado->setText(tr("Calculando en segundo plano..."));
+        ui->lblEnergia->setText("-- u.a.");
+        ui->lblCalorFormacion->setText("-- kcal/mol");
+        ui->lblIonizacion->setText("-- eV");
+        ui->lblSimetria->setText("--");
+        ui->lblDipolo->setText("-- D");
+        ui->lblTiempoCpu->setText("-- s");
+    }
+    else if (estado.hayFrecuencias) {
         ui->lblTituloResultados->setText(tr("📈 MODOS VIBRACIONALES DETECTADOS"));
         rellenarListaFrecuencias();
     } else {
         ui->lblTituloResultados->setText(tr("📊 RESULTADOS Y ESTADO DEL CÁLCULO"));
-        if (!estado.hayProceso && m_view) {
+        if (m_view) {
             ValoresCalculo valores = m_view->getValoresCalculo();
             ui->lblEstado->setText(estado.hayTrayectoria ? tr("Paso de Optimización %1").arg(m_view->getFotogramaActual() + 1) : tr("Listo / Estacionario"));
             ui->lblEnergia->setText(valores.energia);
@@ -1251,5 +1278,17 @@ void Vista::on_comboSoftware_activated(int index){
 
     // 2. Refrescamos el resto del panel derecho respetando el proyecto actual
     actualizarPanelResultados(m_view->getEstado());
+}
+
+void Vista::on_btnAbortar_clicked(){
+    if (m_view) {
+        m_view->stopProceso(); // El cerebro fulmina el PID y libera los paneles
+    }
+}
+
+void Vista::on_actionDetenerSimulacion_triggered(){
+    if (m_view) {
+        m_view->stopProceso(); // El cerebro fulmina el PID y libera los paneles
+    }
 }
 

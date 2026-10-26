@@ -133,7 +133,7 @@ public:
 
     QVector<ModoVibracional> getModosVibracionales() const;
     void            actualizarFaseVibracion(int indiceModo, float faseSenoidal, float escalaVisual);
-
+    void            stopProceso();
 
     void            limpiarLienzo();
     void            setElementoActivo(const QString& simbolo);
@@ -216,6 +216,7 @@ private:
 
     QString                 m_argumentosMopac;
     QString                 m_argumentosOrca;
+    int                     m_pidProceso;
 
     QString                 m_rutaArchivoActual;
     ValoresCalculo          m_valoresCalculo;
