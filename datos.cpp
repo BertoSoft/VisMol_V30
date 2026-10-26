@@ -718,40 +718,25 @@ bool Datos::leerOrcaFinalGeometria(
     QVector<Atomo>& listaAtomos,
     ValoresCalculo& valores
     ){
+    Q_UNUSED(valores);
     if (stream.atEnd() || listaAtomos.isEmpty()) return false;
 
-    // 1. Leer primera línea: Número de átomos (ej: 12)
     QString primeraLinea = stream.readLine().trimmed();
     int numAtomsCheck = primeraLinea.toInt();
-    if (numAtomsCheck != listaAtomos.size()) return false; // Control de contingencia elemental
+    if (numAtomsCheck != listaAtomos.size()) return false;
 
-    // 2. Leer segunda línea: Extraer la energía del comentario de ORCA
-    // Ejemplo: "Coordinates from ORCA-job /tmp/benceno E -232.130424694013"
-    QString segundaLinea = stream.readLine().trimmed();
-    bool exitoEnergia = false;
-
-    if (segundaLinea.contains(" E ")) {
-        QString energiaStr = segundaLinea.section(" E ", 1).trimmed();
-        bool ok;
-        double energiaHartree = energiaStr.toDouble(&ok);
-        if (ok) {
-            valores.energia = QString("%1 u.a.").arg(energiaHartree, 0, 'f', 6);
-            // Su conversión equivalente a kcal/mol para rellenar el calor de formación
-            valores.calorFormacion = QString("%1 kcal/mol").arg(energiaHartree * 627.5093, 0, 'f', 2);
-            exitoEnergia = true;
-        }
-    }
+    stream.readLine(); // Saltar comentario
 
     QVector<QVector3D> posicionesFinales;
-    const float PIXELES_POR_ANGSTROM = 100.0f; // Tu escala canónica de renderizado
+    const float PIXELES_POR_ANGSTROM = 100.0f;
 
-    // 3. Procesar el bloque de coordenadas XYZ
     while (!stream.atEnd()) {
         QString linea = stream.readLine().trimmed();
         if (linea.isEmpty()) continue;
 
         QStringList columnas = linea.split(' ', Qt::SkipEmptyParts);
-        if (columnas.size() >= 4) { // Símbolo, X, Y, Z
+        // ORCA XYZ estándar: [0]=Símbolo, [1]=X, [2]=Y, [3]=Z
+        if (columnas.size() >= 4) {
             bool okX, okY, okZ;
             float xAngstrom = columnas[1].toFloat(&okX);
             float yAngstrom = columnas[2].toFloat(&okY);
@@ -765,7 +750,6 @@ bool Datos::leerOrcaFinalGeometria(
         }
     }
 
-    // 4. Volcado síncrono en las referencias de la RAM si las dimensiones coinciden
     if (posicionesFinales.size() == listaAtomos.size()) {
         for (int i = 0; i < listaAtomos.size(); ++i) {
             listaAtomos[i].posicion = posicionesFinales[i];
@@ -776,3 +760,185 @@ bool Datos::leerOrcaFinalGeometria(
     return false;
 }
 
+bool Datos::leerOrcaPropertySummary(
+    QTextStream& stream,
+    ValoresCalculo& valores
+    ){
+    QString seccionActual = "";
+    bool exito = false;
+
+    // Variables de control para leer el vector del dipolo línea a línea de forma segura
+    bool leyendoDipoloTotal = false;
+    int componenteDipoloContador = 0;
+    double dx = 0.0, dy = 0.0, dz = 0.0;
+    bool okX = false, okY = false, okZ = false;
+
+    while (!stream.atEnd()) {
+        QString linea = stream.readLine().trimmed();
+        if (linea.isEmpty()) continue;
+
+        // Detectar los bloques delimitadores del property.txt de ORCA
+        if (linea.startsWith("$")) {
+            seccionActual = linea;
+            leyendoDipoloTotal = false; // Reset de seguridad al cambiar de sección
+            continue;
+        }
+
+        QStringList tokens = linea.split(' ', Qt::SkipEmptyParts);
+        if (tokens.isEmpty()) continue;
+
+        // =====================================================================
+        // 1. ENERGÍA TOTAL ABSOLUTA (CORREGIDO: Filtro estricto anti-tablas)
+        // =====================================================================
+        if (seccionActual == "$SCF_Energy" || seccionActual == "$Single_Point_Data") {
+            // Captura la línea con '&FinalEnergy' o la fila de datos pura de la energía (0 y el valor)
+            if (linea.contains("FinalEnergy") || (tokens.first() == "0" && tokens.size() == 2)) {
+                bool ok;
+                double eVale = tokens.last().toDouble(&ok);
+                if (ok && eVale < -1.0) { // Salvaguarda: las energías moleculares totales siempre son muy negativas
+                    valores.energia = QString("%1 u.a.").arg(eVale, 0, 'f', 6);
+                    valores.calorFormacion = QString("%1 kcal/mol (Etot)").arg(eVale * 627.5093, 0, 'f', 2);
+                    exito = true;
+                }
+            }
+        }
+        // =====================================================================
+        // 2. MOMENTO DIPOLAR VECTORIAL (LÍNEA A LÍNEA, SIN CRASHES)
+        // =====================================================================
+        else if (seccionActual == "$SCF_Dipole_Moment") {
+            if (linea.startsWith("&dipoleTotal")) {
+                leyendoDipoloTotal = true;
+                componenteDipoloContador = 0;
+                continue;
+            }
+
+            if (leyendoDipoloTotal) {
+                bool okConversion = false;
+                double valorComponente = tokens.last().toDouble(&okConversion);
+
+                if (okConversion) {
+                    if (componenteDipoloContador == 0) { dx = valorComponente; okX = true; }
+                    else if (componenteDipoloContador == 1) { dy = valorComponente; okY = true; }
+                    else if (componenteDipoloContador == 2) { dz = valorComponente; okZ = true; }
+                }
+
+                componenteDipoloContador++;
+
+                // Cuando ya tenemos los 3 componentes (X, Y, Z), calculamos el vector total
+                if (componenteDipoloContador >= 3) {
+                    leyendoDipoloTotal = false; // Cerramos el estado
+
+                    if (okX && okY && okZ) {
+                        double magnitudAu = qSqrt(dx*dx + dy*dy + dz*dz);
+                        double dipoloDebye = magnitudAu * 2.541746; // 1 a.u. = 2.541746 D
+
+                        if (dipoloDebye < 0.001) dipoloDebye = 0.0; // Umbral de simetría
+
+                        valores.dipolo = QString("%1 D").arg(dipoloDebye, 0, 'f', 4);
+                    }
+                }
+            }
+        }
+        // =====================================================================
+        // 3. TIEMPO DE CÓMPUTO CPU
+        // =====================================================================
+        else if (seccionActual == "$Calculation_Timings") {
+            if (linea.contains("SUM")) {
+                bool ok;
+                float tiempo = tokens.last().toFloat(&ok);
+                if (ok) {
+                    valores.tiempoCpu = QString("%1 s").arg(tiempo, 0, 'f', 3);
+                }
+            }
+        }
+    }
+    return exito;
+}
+
+bool Datos::leerOrcaTrayectoria(
+    QTextStream& stream,
+    QVector<Trayectoria>& pelicula,
+    QVector<float>& calores,
+    const QVector<Atomo>& listaAtomosBase
+    ){
+    pelicula.clear();
+    calores.clear();
+    if (listaAtomosBase.isEmpty()) return false;
+
+    int numAtomos = listaAtomosBase.size();
+    const float PIXELES_POR_ANGSTROM = 100.0f; // Tu escala canónica de renderizado
+
+    // Nos aseguramos de posicionar el puntero al inicio del stream
+    stream.device()->seek(0);
+
+    while (!stream.atEnd()) {
+        QString primeraLinea = stream.readLine().trimmed();
+        if (primeraLinea.isEmpty()) continue;
+
+        // 1. Validar el número de átomos del fotograma
+        int numAtomsCheck = primeraLinea.toInt();
+        if (numAtomsCheck != numAtomos) return false;
+
+        // 2. Extraer la energía de la línea de comentario
+        // Ejemplo: "Coordinates from ORCA-job /tmp/co2 E -186.080340974860"
+        QString segundaLinea = stream.readLine().trimmed();
+        ValoresCalculo valoresFotograma;
+        float calorKcal = 0.0f;
+
+        if (segundaLinea.contains(" E ")) {
+            QString energiaStr = segundaLinea.section(" E ", 1).trimmed();
+            bool ok;
+            double energiaHartree = energiaStr.toDouble(&ok);
+            if (ok) {
+                valoresFotograma.energia = QString("%1 u.a.").arg(energiaHartree, 0, 'f', 6);
+                calorKcal = static_cast<float>(energiaHartree * 627.5093);
+                valoresFotograma.calorFormacion = QString("%1 kcal/mol (Etot)").arg(calorKcal, 0, 'f', 2);
+
+                // Guardamos el calor en el histórico para el perfil de la gráfica inferior
+                calores.append(calorKcal);
+            }
+        }
+
+        // 3. Procesar los átomos correspondientes a este fotograma
+        Trayectoria fotograma;
+        bool bloqueLeidoOk = true;
+
+        for (int i = 0; i < numAtomos; ++i) {
+            if (stream.atEnd()) { bloqueLeidoOk = false; break; }
+            QString lineaAtomo = stream.readLine().trimmed();
+            QStringList columnas = lineaAtomo.split(' ', Qt::SkipEmptyParts);
+
+            if (columnas.size() >= 4) {
+                bool okX, okY, okZ;
+                float x = columnas[1].toFloat(&okX) * PIXELES_POR_ANGSTROM;
+                float y = columnas[2].toFloat(&okY) * PIXELES_POR_ANGSTROM;
+                float z = columnas[3].toFloat(&okZ) * PIXELES_POR_ANGSTROM;
+
+                if (okX && okY && okZ) {
+                    Atomo at;
+                    at.id = listaAtomosBase[i].id;
+                    at.simbolo = columnas[0]; // Mantiene el símbolo del .xyz
+                    at.posicion = QVector3D(x, y, z);
+                    fotograma.listaAtomos.append(at);
+                } else {
+                    bloqueLeidoOk = false;
+                }
+            } else {
+                bloqueLeidoOk = false;
+            }
+        }
+
+        if (bloqueLeidoOk && fotograma.listaAtomos.size() == numAtomos) {
+            // Inicializar metadatos por defecto para los QLabels de este frame
+            valoresFotograma.ionizacion = "-- eV";
+            valoresFotograma.simetria   = "--";
+            valoresFotograma.dipolo     = "-- D";
+            valoresFotograma.tiempoCpu  = "-- s";
+
+            fotograma.valoresCalculo = valoresFotograma;
+            pelicula.append(fotograma);
+        }
+    }
+
+    return !pelicula.isEmpty();
+}

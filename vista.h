@@ -126,6 +126,8 @@ private:
     void actualizarPanelResultados(const Estado& estado);
     void actualizarGraficaEInferior(const Estado& estado);
 
+    int             m_tipoCalculo       = 0;
+
     View*           m_view              = nullptr;
     Lienzo*         m_lienzo            = nullptr;
     QButtonGroup*   m_grupoIzdo         = nullptr;

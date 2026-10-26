@@ -60,9 +60,25 @@ public:
         QTextStream& stream,
         QVector<Atomo>& listaAtomos,
         ValoresCalculo& valores
-        );
+    );
 
+    static bool leerOrcaPropertySummary(
+        QTextStream& stream,
+        ValoresCalculo& valores
+    );
 
+    static bool leerOrcaTrayectoria(
+        QTextStream& stream,
+        QVector<Trayectoria>& pelicula,
+        QVector<float>& calores,
+        const QVector<Atomo>& listaAtomosBase
+    );
+
+    static bool leerOrcaOutSoloFrecuencias(
+        QTextStream& streamOut,
+        const QVector<Atomo>& listaAtomos,
+        QVector<ModoVibracional>& m_modosVibracionales
+    );
 
 };
 
