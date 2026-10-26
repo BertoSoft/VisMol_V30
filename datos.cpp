@@ -942,3 +942,167 @@ bool Datos::leerOrcaTrayectoria(
 
     return !pelicula.isEmpty();
 }
+
+bool Datos::leerOrcaHessFrecuencias(
+    QTextStream& streamHess,
+    const QVector<Atomo>& listaAtomos,
+    QVector<ModoVibracional>& m_modosVibracionales
+    ){
+    m_modosVibracionales.clear();
+    if (listaAtomos.isEmpty()) return false;
+
+    // Volcar el stream completo para realizar saltos por secciones estructurales del .hess
+    streamHess.device()->seek(0);
+    QString todoElTexto = streamHess.readAll();
+
+    // =========================================================================
+    // FASE 1: LEER FRECUENCIAS ABSOLUTAS ($vibrational_frequencies)
+    // =========================================================================
+    int idxFreqs = todoElTexto.indexOf("$vibrational_frequencies");
+    if (idxFreqs == -1) return false;
+
+    QString seccionFreqs = todoElTexto.mid(idxFreqs);
+    QTextStream lectorFreqs(&seccionFreqs);
+    lectorFreqs.readLine(); // Consumir cabecera "$vibrational_frequencies"
+
+    int totalModosTotales = lectorFreqs.readLine().trimmed().toInt(); // Número de modos totales calculados
+    QVector<float> frecuenciasTemporales;
+
+    for (int i = 0; i < totalModosTotales; ++i) {
+        if (lectorFreqs.atEnd()) break;
+        QString linea = lectorFreqs.readLine().trimmed();
+        QStringList tokens = linea.split(' ', Qt::SkipEmptyParts);
+        if (tokens.size() >= 2) {
+            frecuenciasTemporales.append(tokens[1].toFloat());
+        }
+    }
+
+    // =========================================================================
+    // FASE 2: LEER INTENSIDADES DEL ESPECTRO IR ($ir_spectrum)
+    // =========================================================================
+    int idxIr = todoElTexto.indexOf("$ir_spectrum");
+    if (idxIr == -1) return false;
+
+    QString seccionIr = todoElTexto.mid(idxIr);
+    QTextStream lectorIr(&seccionIr);
+    lectorIr.readLine(); // Consumir cabecera "$ir_spectrum"
+    lectorIr.readLine(); // Consumir conteo redundante
+
+    QVector<float> intensidadesTemporales;
+    for (int i = 0; i < totalModosTotales; ++i) {
+        if (lectorIr.atEnd()) break;
+        QString linea = lectorIr.readLine().trimmed();
+        QStringList tokens = linea.split(' ', Qt::SkipEmptyParts);
+        // El formato de ORCA es: [0]=wavenumber, [1]=eps, [2]=Intensidad_IR, [3..5]=TX,TY,TZ
+        if (tokens.size() >= 3) {
+            intensidadesTemporales.append(tokens[2].toFloat());
+        }
+    }
+
+    // =========================================================================
+    // FASE 3: LEER MATRIZ DE MODOS NORMALES ($normal_modes)
+    // =========================================================================
+    int idxModos = todoElTexto.indexOf("$normal_modes");
+    if (idxModos == -1) return false;
+
+    QString seccionModos = todoElTexto.mid(idxModos);
+    QTextStream lectorModos(&seccionModos);
+    lectorModos.readLine(); // Consumir cabecera "$normal_modes"
+
+    QStringList dimensiones = lectorModos.readLine().trimmed().split(' ', Qt::SkipEmptyParts);
+    if (dimensiones.size() < 2) return false;
+
+    int filasMatriz = dimensiones[0].toInt(); // Coordenadas Cartesianas (3 * N_átomos)
+    int columnasMatriz = dimensiones[1].toInt(); // Modos vibracionales totales
+
+    // Inicializar mapas dinámicos para reconstruir los bloques verticales del .hess
+    QMap<int, QVector<QVector3D>> mapaDesplazamientos;
+    for (int col = 0; col < columnasMatriz; ++col) {
+        mapaDesplazamientos[col].resize(listaAtomos.size());
+    }
+
+    // Factor de conversión canónico de tu visor para transformar la deformación a píxeles
+    const float PIXELES_POR_ANGSTROM = 100.0f;
+
+    // Procesar la matriz organizada en bloques de columnas horizontales
+    while (!lectorModos.atEnd()) {
+        QString linea = lectorModos.readLine().trimmed();
+
+        // Si salimos de la matriz o llegamos a una nueva sección, rompemos el bucle
+        if (linea.startsWith("$") && !linea.startsWith("$normal_modes")) {
+            break;
+        }
+        if (linea.isEmpty() || linea.startsWith("#")) {
+            continue;
+        }
+
+        QStringList columnasHeaders = linea.split(' ', Qt::SkipEmptyParts);
+
+        // Verificamos si la línea es una cabecera de bloque (contiene los índices de los modos, ej: 0 1 2 3 4)
+        if (!columnasHeaders.isEmpty() && !columnasHeaders[0].contains(".") && columnasHeaders[0].toInt() >= 0) {
+            QVector<int> indicesColumnasBloque;
+            for (const QString& h : columnasHeaders) {
+                indicesColumnasBloque.append(h.toInt());
+            }
+
+            // Leer las 'filasMatriz' consecutivas asociadas a este bloque horizontal de columnas
+            for (int r = 0; r < filasMatriz; ++r) {
+                if (lectorModos.atEnd()) break;
+
+                QString lineaFila = lectorModos.readLine().trimmed();
+                QStringList tokensFila = lineaFila.split(' ', Qt::SkipEmptyParts);
+                if (tokensFila.size() < 2) continue;
+
+                int idFilaMatriz = tokensFila[0].toInt(); // Índice de la fila cartesiana (0, 1, 2...)
+
+                // 🎯 MApEADO BIUNÍVOCO CORRECTO PARA ORCA:
+                int idAtomoMapeado = idFilaMatriz / 3;
+                int ejeActivo      = idFilaMatriz % 3;
+
+                if (idAtomoMapeado >= listaAtomos.size()) continue;
+
+                // Recorremos los valores de desplazamiento del token correspondientes a cada columna del bloque
+                for (int c = 1; c < tokensFila.size(); ++c) {
+                    if ((c - 1) >= indicesColumnasBloque.size()) break;
+
+                    int columnaGlobal = indicesColumnasBloque[c - 1];
+                    if (columnaGlobal >= columnasMatriz) continue;
+
+                    float valorDesplazamiento = tokensFila[c].toFloat();
+                    float valorEscaladoPixel = valorDesplazamiento * PIXELES_POR_ANGSTROM;
+
+                    // Inyección segura de componentes cartesianos en base al módulo 3 del índice ORCA
+                    if (ejeActivo == 0) {
+                        mapaDesplazamientos[columnaGlobal][idAtomoMapeado].setX(valorEscaladoPixel);
+                    } else if (ejeActivo == 1) {
+                        mapaDesplazamientos[columnaGlobal][idAtomoMapeado].setY(valorEscaladoPixel);
+                    } else if (ejeActivo == 2) {
+                        mapaDesplazamientos[columnaGlobal][idAtomoMapeado].setZ(valorEscaladoPixel);
+                    }
+                }
+            }
+        }
+    }
+
+    // =========================================================================
+    // FASE 4: ENSAMBLAJE DE MODOS FILTRANDO ROTACIONES/TRASLACIONES (Freq > 20 cm⁻¹)
+    // =========================================================================
+    for (int i = 0; i < frecuenciasTemporales.size(); ++i) {
+        float valorCm1 = frecuenciasTemporales[i];
+
+        // Filtro cuántico estricto: Eliminamos los primeros 6 modos residuales (valores cercanos a 0.0)
+        if (valorCm1 < 20.0f && valorCm1 > -20.0f) {
+            continue;
+        }
+
+        ModoVibracional modo;
+        modo.numero = m_modosVibracionales.size() + 1; // ID auto-incremental correlativo para la UI
+        modo.frecuencia = valorCm1;
+        modo.intensidad = (i < intensidadesTemporales.size()) ? intensidadesTemporales[i] : 0.0f;
+        modo.desplazamientos = mapaDesplazamientos[i];
+
+        m_modosVibracionales.append(modo);
+    }
+
+    return !m_modosVibracionales.isEmpty();
+}

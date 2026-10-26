@@ -318,6 +318,46 @@ void Vista::setEstilos(){
     this->setStyleSheet(qss);
 }
 
+void Vista::stopAnimaciones(const Estado& estado) {
+    // 1. Detener y limpiar la animación de Frecuencias (Vibración)
+    if (m_timerVibracion && m_timerVibracion->isActive()) {
+        m_timerVibracion->stop();
+    }
+    m_idxModoActivo = -1;
+    ui->wGrafica->setModoActivo(-1);
+
+    // Fuerza a la molécula a volver a sus coordenadas estáticas de equilibrio
+    if (m_view) {
+        m_view->actualizarFaseVibracion(-1, 0.0f, 0.0f);
+    }
+
+    // 2. Detener y limpiar la animación de Trayectorias (Película)
+    if (m_timerAnimacion && m_timerAnimacion->isActive()) {
+        m_timerAnimacion->stop();
+    }
+    ui->btnPlayAnimacion->setText(tr("▶️ Play"));
+
+    if (m_view && !estado.hayTrayectoria) {
+        ui->frameTrayectoria->setVisible(false);
+        ui->sliderPasos->setRange(0, 0);
+        ui->sliderPasos->setValue(0);
+    }
+
+    // 3. 🎯 SINCRO DE LA BARRA DE ESTADO: Restaurar mensajes dinámicos de edición
+    if (!estado.estaEmpezado) {
+        m_lblMesaje->setText(tr(" Listo. Cree un nuevo proyecto o abra un archivo para comenzar."));
+    } else {
+        QString txt = "";
+        switch (estado.modoEditor) {
+        case ModoSeleccion:   txt = tr(" Modo Selección | Use el puntero para interactuar con los átomos."); break;
+        case ModoCrearEnlace: txt = tr(" Modo Enlace 🔗 | Seleccione dos átomos para enlazarlos."); break;
+        case ModoRotacion3D:  txt = tr(" Modo Rotación 3D 🔄 | Arrastre el lienzo para orbitar la molécula."); break;
+        case ModoDibujo:      txt = tr(" Modo Dibujo 🧪 | Añadiendo elemento: %1 (Clic en lienzo para colocar)").arg(m_view->getAtomoActivo()); break;
+        }
+        m_lblMesaje->setText(txt);
+    }
+}
+
 bool Vista::sePuedeCerrar(){
     if (!m_view) return true;
 
@@ -533,6 +573,8 @@ void Vista::configurarCalculoMopac(){
         // Guardamos el comando en el cerebro del programa y actualizamos el cuadro de texto
         m_view->setArgumentosMopac(comandoFinal);
         ui->etArgumentos->setText(comandoFinal);
+        m_tipoCalculo   = comboTarea->currentIndex();
+        m_programa      = 0; // Mopac
     }
 }
 
@@ -584,8 +626,9 @@ void Vista::configurarCalculoOrca(){
     QLabel *lblTarea = new QLabel(tr("Tipo de Tarea:"), &dlg);
     QComboBox *comboTarea = new QComboBox(&dlg);
     comboTarea->addItem(tr("1.- Optimización Geométrica"),       "Opt");
-    comboTarea->addItem(tr("2.- Trayectoria de Optimización"),   "Opt"); // Ambas usan Opt, el cerebro decidirá el enum por el m_argumentos
-    comboTarea->addItem(tr("3.- Frecuencias Vibracionales (IR)"), "Freq");
+    comboTarea->addItem(tr("2.- Trayectoria de Optimización"),   "Opt");
+    // 🎯 CORRECCIÓN CRÍTICA: Forzamos la optimización previa antes de las frecuencias
+    comboTarea->addItem(tr("3.- Frecuencias Vibracionales (IR)"), "Opt Freq");
 
     // Campo D: Keywords adicionales
     QLabel *lblExtras = new QLabel(tr("Keywords Adicionales:"), &dlg);
@@ -698,7 +741,8 @@ void Vista::configurarCalculoOrca(){
         ui->etArgumentos->setText(comandoFinal);
 
         // Segun tipo Calculo m_tipoCalculo
-        m_tipoCalculo = comboTarea->currentIndex();
+        m_tipoCalculo   = comboTarea->currentIndex();
+        m_programa      = 1; // Orca
     }
 }
 
@@ -863,11 +907,16 @@ void Vista::actualizarGraficaEInferior(const Estado& estado) {
     bool usarPanelDerecho = (estado.estaEmpezado && numeroAtomos > 1);
     ui->wGrafica->setEnabled(usarPanelDerecho);
 
+    // =========================================================================
+    // 🧹 PASO DE CONTROL: LIMPIEZA TOTAL PREVENTIVA (INCLUYE SET MENSAJES)
+    // =========================================================================
+    stopAnimaciones(estado);
+
     bool esperandoSegundaFase = m_view ? m_view->property("esperandoForceSecuencial").toBool() : false;
     bool tieneConvergenciaNormal = (estado.estaOptimizado && m_view && !m_view->getCalores().isEmpty() && !esperandoSegundaFase);
 
     // =========================================================================
-    // 🎞️ CASO A: REPRODUCCIÓN DINÁMICA DE LA PELÍCULA (.AUX)
+    // 🎞️ CASO A: REPRODUCCIÓN DINÁMICA DE LA PELÍCULA (.AUX / _TRJ.XYZ)
     // =========================================================================
     if (estado.hayTrayectoria) {
         ui->lblTituloFreq->setText(tr("🎞️ PERFIL DE TRAYECTORIA ENERGÉTICA"));
@@ -886,54 +935,30 @@ void Vista::actualizarGraficaEInferior(const Estado& estado) {
         return;
     }
 
-    // Limpieza reglamentaria de componentes de la línea de tiempo de la película para los demás casos
-    if (m_timerAnimacion && m_timerAnimacion->isActive()) {
-        m_timerAnimacion->stop();
-        ui->btnPlayAnimacion->setText(tr("▶️ Play"));
-    }
-    ui->frameTrayectoria->setVisible(false);
-    ui->sliderPasos->setRange(0, 0);
-    ui->sliderPasos->setValue(0);
-
     // =========================================================================
-    // 📈 CASO B: ESPECTRO DE ABSORCIÓN INFRARROJA ACTIVO
+    // 📈 CASO B: ESPECTRO DE ABSORCIÓN INFRARROJA ACTIVO (IR)
     // =========================================================================
     if (estado.hayFrecuencias) {
         ui->lblTituloFreq->setText(tr("📈 ESPECTRO DE ABSORCIÓN INFRARROJA (IR)"));
         ui->wGrafica->setVisible(true);
 
-        // 🎯 INTERCEPCIÓN DE EDICIÓN: Si el usuario cambia a ModoSeleccion, ModoDibujo o ModoEnlace,
-        // congelamos la animación cuántica de golpe para que pueda trabajar sobre la estructura estática.
-        if (estado.modoEditor != ModoEditor::ModoRotacion3D) {
-            if (m_timerVibracion && m_timerVibracion->isActive()) {
-                m_timerVibracion->stop();
-                m_idxModoActivo = -1;
-
-                // 💎 RESTAURACIÓN INMUTABLE: Le pasamos -1 al cerebro.
-                // Esto fuerza a que m_listaAtomosTrabajo se iguale síncronamente a m_listaAtomos (reposo)
-                // y emita 'actualizarLienzo()' automáticamente.
-                if (m_view) {
-                    m_view->actualizarFaseVibracion(-1, 0.0f, 0.0f);
-                }
-
-                // Limpiamos también el resaltado rojo de la gráfica para ser coherentes visualmente
-                ui->wGrafica->setModoActivo(-1);
-            }
-        }
-
         if (m_view) {
             ui->wGrafica->setDatosEspectro(m_view->getModosVibracionales());
+            QVector<ModoVibracional> modos = m_view->getModosVibracionales();
 
-            // 🎯 El arranque automático SOLO se producirá si el usuario vuelve a ModoRotacion3D
-            if (ui->listaFrecuencias->count() > 0 && estado.modoEditor == ModoEditor::ModoRotacion3D &&
-                m_timerVibracion && !m_timerVibracion->isActive()) {
+            if (!modos.isEmpty() && estado.modoEditor == ModoEditor::ModoRotacion3D) {
+                if (ui->listaFrecuencias->count() == 0) {
+                    rellenarListaFrecuencias();
+                }
 
-                ui->listaFrecuencias->setCurrentRow(0);
+                if (ui->listaFrecuencias->count() > 0) {
+                    ui->listaFrecuencias->setCurrentRow(0);
+                    QListWidgetItem* primerItem = ui->listaFrecuencias->item(0);
+                    m_idxModoActivo = primerItem->data(Qt::UserRole).toInt();
+                } else {
+                    m_idxModoActivo = 0;
+                }
 
-                QListWidgetItem* primerItem = ui->listaFrecuencias->item(0);
-                m_idxModoActivo = primerItem->data(Qt::UserRole).toInt();
-
-                QVector<ModoVibracional> modos = m_view->getModosVibracionales();
                 if (m_idxModoActivo >= 0 && m_idxModoActivo < modos.size()) {
                     ui->wGrafica->setModoActivo(modos[m_idxModoActivo].numero);
                 }
@@ -942,11 +967,13 @@ void Vista::actualizarGraficaEInferior(const Estado& estado) {
                 m_timerVibracion->start(30);
             }
         }
+        return;
     }
+
     // =========================================================================
     // 📊 CASO C: CURVA DE CONVERGENCIA ESTÁTICA
     // =========================================================================
-    else if (tieneConvergenciaNormal && !estado.hayFrecuencias) {
+    if (tieneConvergenciaNormal) {
         ui->lblTituloFreq->setText(tr("📊 CURVA DE CONVERGENCIA ENERGÉTICA"));
         ui->wGrafica->setVisible(true);
 
@@ -954,23 +981,18 @@ void Vista::actualizarGraficaEInferior(const Estado& estado) {
             ui->wGrafica->setDatosCalores(m_view->getCalores());
             ui->wGrafica->setPasoActual(m_view->getCalores().size() - 1);
         }
+        return;
     }
+
     // =========================================================================
     // 💤 CASO D: REPOSO ABSOLUTO O TRANSICIÓN INTERMEDIA
     // =========================================================================
-    else {
-        if (m_timerVibracion && m_timerVibracion->isActive() && !estado.hayFrecuencias) {
-            m_timerVibracion->stop();
-            m_idxModoActivo = -1;
-            if (m_view) m_view->actualizarFaseVibracion(-1, 0.0f, 0.0f);
-        }
+    ui->lblTituloFreq->setText(esperandoSegundaFase ? tr("⏳ OPTIMIZACIÓN LISTA. CALCULANDO MODOS VIBRACIONALES...") : "");
+    ui->wGrafica->setVisible(true);
 
-        ui->lblTituloFreq->setText(esperandoSegundaFase ? tr("⏳ OPTIMIZACIÓN LISTA. CALCULANDO MODOS VIBRACIONALES...") : "");
-        ui->wGrafica->setVisible(true);
+    QVector<ModoVibracional> vacio;
+    ui->wGrafica->setDatosEspectro(vacio);
 
-        QVector<ModoVibracional> vacio;
-        ui->wGrafica->setDatosEspectro(vacio);
-    }
 
     // =========================================================================
     // 💬 7. BARRA DE CONSEJOS EN EL SUELO DE LA INTERFAZ
@@ -1139,7 +1161,7 @@ void Vista::on_btnConfigurarParametros_clicked(){
 }
 
 void Vista::on_btnLanzar_clicked(){
-    m_view->lanzarCalculoQm(m_tipoCalculo);
+    m_view->lanzarCalculoQm(m_programa, m_tipoCalculo);
 }
 
 void Vista::on_btnPasoAtras_clicked(){

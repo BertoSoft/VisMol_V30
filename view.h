@@ -108,7 +108,7 @@ public:
     void            abrirProyecto(const QString& ruta);
     void            guardarProyecto();
     void            cerrarProyecto();
-    void            lanzarCalculoQm(int metodo);
+    void            lanzarCalculoQm(int programa, int calculo);
 
 
     Estado          getEstado();
@@ -180,7 +180,7 @@ private:
     void            adelanteHistorial();
     void            cargarMopacResultados(const QString& rutaOut, TipoCalculo tipoCalculo);
     void            cargarOrcaResultados(const QString& rutaOut, TipoCalculo tipoCalculo);
-    TipoCalculo     getTipoCalculo(int metodo);
+    TipoCalculo     getTipoCalculo(int programa, int calculo);
     void            lanzarCalculoMopac(const QString& ruta, TipoCalculo tipoCalculo);
     void            lanzarCalculoOrca(const QString& ruta, TipoCalculo tipoCalculo);
     void            centrarListaAtomos(QVector<Atomo>& lista);

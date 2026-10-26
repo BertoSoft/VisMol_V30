@@ -74,7 +74,7 @@ public:
         const QVector<Atomo>& listaAtomosBase
     );
 
-    static bool leerOrcaOutSoloFrecuencias(
+    static bool leerOrcaHessFrecuencias(
         QTextStream& streamOut,
         const QVector<Atomo>& listaAtomos,
         QVector<ModoVibracional>& m_modosVibracionales

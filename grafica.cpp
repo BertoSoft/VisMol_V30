@@ -15,6 +15,7 @@ Grafica::Grafica(QWidget *parent)
 }
 
 void Grafica::setDatosCalores(const QVector<float>& calores) {
+    m_hayFrecuencias = false; // ◄ 🎯 APAGAR BANDERA DE FRECUENCIAS AQUÍ
     m_valoresEnergia.clear();
 
     // Convertimos los floats leídos del .out a doubles para reutilizar el motor de dibujo existente
@@ -42,6 +43,7 @@ void Grafica::setDatosCalores(const QVector<float>& calores) {
 }
 
 void Grafica::setDatos(const QVector<Trayectoria>& pelicula) {
+    m_hayFrecuencias = false; // ◄ 🎯 APAGAR BANDERA DE FRECUENCIAS AQUI
     m_valoresEnergia.clear();
 
     // Extracción limpia de la magnitud numérica aislando el token de texto "kcal/mol"

@@ -203,15 +203,15 @@ void View::cerrarProyecto(){
     notificaEstado();
 }
 
-void View::lanzarCalculoQm(int metodo){
+void View::lanzarCalculoQm(int programa, int calculo){
     if (m_listaAtomos.isEmpty()) return;
 
     // 1. Congelar la interfaz de usuario al arrancar la simulación
     m_estado.hayProceso = true;
     notificaEstado();
 
-    // 2. Obtener el tipo de cálculo unificado de forma limpia
-    TipoCalculo tipoCalculoFaseActual = getTipoCalculo(metodo);
+    // 2. Obtener el tipo de cálculo unificado (OPT, Trayectoria, Frecuencias) de forma limpia
+    TipoCalculo tipoCalculoFaseActual = getTipoCalculo(programa, calculo);
 
     // 3. Extraer el nombre base del proyecto para los archivos temporales
     QString nombreBase = QFileInfo(m_rutaArchivoActual).baseName();
@@ -220,20 +220,18 @@ void View::lanzarCalculoQm(int metodo){
     // Factor de conversión Angstrom/Píxeles común (1 Ángstrom = 100 píxeles de escena)
     const float PIXELES_POR_ANGSTROM = 100.0f;
 
+    // 🎯 DETECCIÓN DE MOTOR: Determinamos si el usuario seleccionó ORCA o MOPAC
+    bool esOrca = (programa == 1);
+
     // =========================================================================
-    // 🔀 BIFURCACIÓN DE MOTORES QUÍMICOS
+    // 🔀 BIFURCACIÓN DE MOTORES QUÍMICOS SEGÚN TIPO DE CÁLCULO
     // =========================================================================
 
-    if (metodo == 1) {
+    if (esOrca) {
         // ---------------------------------------------------------------------
-        // 🔥 FLUJO B: MOTOR AB INITIO / DFT (ORCA) -> Genera archivo .inp
+        // 🔥 FLUJO A: MOTOR AB INITIO / DFT (ORCA) -> Genera archivo .inp
         // ---------------------------------------------------------------------
         QString rutaInputInp = QDir::tempPath() + "/" + nombreBase + ".inp";
-
-        // Control de contingencia por si la cadena está vacía
-        if (m_argumentosOrca.trimmed().isEmpty()) {
-            m_argumentosOrca = "! B3LYP def2-SVP Opt RIJCOSX";
-        }
 
         QFile archivoInp(rutaInputInp);
         if (!archivoInp.open(QIODevice::WriteOnly | QIODevice::Text)) {
@@ -259,12 +257,12 @@ void View::lanzarCalculoQm(int metodo){
         QString rutaCopiaVisMol = rutaInputInp.section('.', 0, -2) + ".vismol";
         Datos::guardarVisMol(rutaCopiaVisMol, m_listaAtomos, m_listaEnlaces, m_comentario);
 
-        // Lanzar proceso asíncrono dedicado de ORCA
-        this->lanzarCalculoOrca(rutaInputInp, tipoCalculoFaseActual); // Reutilizamos tu slot para ORCA
+        // Lanzar proceso asíncrono dedicado de ORCA con su enum correcto
+        this->lanzarCalculoOrca(rutaInputInp, tipoCalculoFaseActual);
     }
     else {
         // ---------------------------------------------------------------------
-        // 🛠️ FLUJO A: MOTOR SEMIEMPÍRICO (MOPAC) -> Genera archivo .mop
+        // 🛠️ FLUJO B: MOTOR SEMIEMPÍRICO (MOPAC) -> Genera archivo .mop
         // ---------------------------------------------------------------------
         QString rutaInputMop = QDir::tempPath() + "/" + nombreBase + ".mop";
 
@@ -277,8 +275,8 @@ void View::lanzarCalculoQm(int metodo){
         // Máquina de estados secuencial nativa de MOPAC (Fase previa OPT antes de FORCE)
         if (tipoCalculoFaseActual == TipoCalculo::MopacFreq && !m_estado.estaOptimizado) {
             this->setProperty("esperandoForceSecuencial", true);
-            QString metodo = m_argumentosMopac.split(' ', Qt::SkipEmptyParts).first();
-            argumentosEjecucion = metodo + " OPT DIPOLE NOINTER";
+            QString metodoQuimico = m_argumentosMopac.split(' ', Qt::SkipEmptyParts).first();
+            argumentosEjecucion = metodoQuimico + " OPT DIPOLE NOINTER";
             tipoCalculoFaseActual = TipoCalculo::MopacOpt;
         }
 
@@ -496,7 +494,7 @@ void View::resetValores(){
     m_rutaArchivoActual   = "";
     m_comentario          = "";
     m_argumentosMopac     = "PM7 OPT DIPOLE NOINTER";
-    m_argumentosOrca      = "! RHF 6-31G Opt";
+    m_argumentosOrca      = "! RHF mini Opt";
     m_ultimaPosRat        = QVector3D(-10000.0f, -10000.0f, -10000.0f);
 
     // 2.5 🎯 INICIALIZACIÓN DE VALORES DE CÁLCULO ASOCIADOS A LA INTERFAZ
@@ -867,6 +865,7 @@ void View::lanzarCalculoMopac(const QString& ruta, TipoCalculo tipoCalculo){
                 QString rutaArc = rutaBase + ".arc";
                 QString rutaAux = rutaBase + ".aux";
 
+
                 if (exitStatus == QProcess::NormalExit && exitCode == 0) {
 
                     // 🌟 AQUÍ ESTÁ EL CAMBIO: Usamos directamente el 'tipoCalculo' de la lambda.
@@ -892,7 +891,7 @@ void View::lanzarCalculoMopac(const QString& ruta, TipoCalculo tipoCalculo){
 
                         // Lanzamos el segundo cálculo de inmediato. Como ahora m_estado.estaOptimizado
                         // es true, correrá FORCE sobre las coordenadas perfectas.
-                        this->lanzarCalculoQm(0);
+                        this->lanzarCalculoQm(0, 2);  // o= MOPAC , 2= Freq
                         return; // Salida crucial para ceder el control al nuevo QProcess cuántico
                     }
 
@@ -1155,6 +1154,29 @@ void View::cargarOrcaResultados(const QString& rutaOut, TipoCalculo tipoCalculo)
         m_estado.hayFrecuencias = false;
         break;
     }
+    case TipoCalculo::OrcaFreq: {
+        // 1. PRIMERO: Cargamos la geometría final optimizada que dejó ORCA en el .xyz
+        QFile archivoXyz(rutaXyz);
+        if (archivoXyz.exists() && archivoXyz.open(QIODevice::ReadOnly | QIODevice::Text)) {
+            QTextStream streamXyz(&archivoXyz);
+            // Esto actualiza m_listaAtomos con las posiciones reales del mínimo de energía
+            Datos::leerOrcaFinalGeometria(streamXyz, m_listaAtomos, nuevosValores);
+            archivoXyz.close();
+        }
+
+        // 2. SEGUNDO: Cargamos el espectro IR y los desplazamientos del archivo .hess
+        QString rutaHess = rutaBase + ".hess";
+        QFile archivoHess(rutaHess);
+        if (archivoHess.exists() && archivoHess.open(QIODevice::ReadOnly | QIODevice::Text)) {
+            QTextStream streamHess(&archivoHess);
+            exitoCarga = Datos::leerOrcaHessFrecuencias(streamHess, m_listaAtomos, m_modosVibracionales);
+            archivoHess.close();
+        }
+
+        m_estado.hayTrayectoria = false;
+        m_estado.hayFrecuencias = exitoCarga;
+        break;
+    }
 
     default:
         break;
@@ -1203,31 +1225,32 @@ void View::cargarOrcaResultados(const QString& rutaOut, TipoCalculo tipoCalculo)
 }
 
 
-TipoCalculo View::getTipoCalculo(int metodo){
-    // 1. Identificar el motor químico analizando el inicio del string de comandos
-    bool esOrca = m_argumentosOrca.trimmed().startsWith("!");
+TipoCalculo View::getTipoCalculo(int programa, int calculo){
+    TipoCalculo tipo = TipoCalculo::MopacOpt;
 
-    // Si la interfaz activa el combo en ORCA, o detectamos el marcador exclamación nativo
-    if (esOrca) {
-        // Mapeo unificado basado estrictamente en el índice numérico que viene de la Vista
-        if (metodo == 1) {
-            return TipoCalculo::OrcaTrayectoria;
+    if(programa == 0){ // MOpac
+        if(calculo == 0){
+            tipo = TipoCalculo::MopacOpt;
         }
-        else if (metodo == 2 || metodo == 3) {
-            return TipoCalculo::OrcaFreq;
+        else if(calculo == 1){
+            tipo = TipoCalculo::MopacTrayectoria;
         }
-        return TipoCalculo::OrcaOpt; // Por defecto o índice 0
+        else{
+            tipo = TipoCalculo::MopacFreq;
+        }
     }
-    else {
-        // Flujo homólogo simétrico para el motor semiempírico MOPAC
-        if (metodo == 1) {
-            return TipoCalculo::MopacTrayectoria;
+    else{ // ORCA
+        if(calculo == 0){
+            tipo = TipoCalculo::OrcaOpt;
         }
-        else if (metodo == 2 || metodo == 3) {
-            return TipoCalculo::MopacFreq;
+        else if(calculo == 1){
+            tipo = TipoCalculo::OrcaTrayectoria;
         }
-        return TipoCalculo::MopacOpt; // Por defecto o índice 0
+        else{
+            tipo = TipoCalculo::OrcaFreq;
+        }
     }
+    return tipo;
 }
 
 void View::centrarListaAtomos(QVector<Atomo>& lista) {

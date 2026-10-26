@@ -118,6 +118,7 @@ private:
     void configurarCalculoOrca();
     void rellenarListaFrecuencias();
     void actualizarFrameVibracion();
+    void stopAnimaciones(const Estado& estado);
 
     // 🎯 NUEVOS SUB-MÓDULOS DE SINCRONIZACIÓN DE INTERFAZ (REFALM)
     void actualizarTituloYMetadatos(const Estado& estado);
@@ -126,7 +127,8 @@ private:
     void actualizarPanelResultados(const Estado& estado);
     void actualizarGraficaEInferior(const Estado& estado);
 
-    int             m_tipoCalculo       = 0;
+    int             m_tipoCalculo       = -1;
+    int             m_programa          = -1;
 
     View*           m_view              = nullptr;
     Lienzo*         m_lienzo            = nullptr;
