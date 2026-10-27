@@ -416,97 +416,69 @@
              <number>8</number>
             </property>
             <item row="0" column="0">
-             <widget class="QLabel" name="lblTagEstado">
-              <property name="text">
-               <string>Estado:</string>
-              </property>
-             </widget>
-            </item>
-            <item row="0" column="1">
-             <widget class="QLabel" name="lblEstado">
-              <property name="text">
-               <string>Listo</string>
-              </property>
-             </widget>
-            </item>
-            <item row="1" column="0">
              <widget class="QLabel" name="lblTagEnergia">
               <property name="text">
                <string>Energía Total:</string>
               </property>
              </widget>
             </item>
-            <item row="1" column="1">
+            <item row="0" column="1">
              <widget class="QLabel" name="lblEnergia">
               <property name="text">
                <string>-- u.a.</string>
               </property>
              </widget>
             </item>
-            <item row="2" column="0">
+            <item row="1" column="0">
              <widget class="QLabel" name="lblTagCalor">
               <property name="text">
                <string>Calor Formación:</string>
               </property>
              </widget>
             </item>
-            <item row="2" column="1">
+            <item row="1" column="1">
              <widget class="QLabel" name="lblCalorFormacion">
               <property name="text">
                <string>-- kcal/mol</string>
               </property>
              </widget>
             </item>
-            <item row="3" column="0">
+            <item row="2" column="0">
              <widget class="QLabel" name="lblTagIonizacion">
               <property name="text">
                <string>E. Ionización:</string>
               </property>
              </widget>
             </item>
-            <item row="3" column="1">
+            <item row="2" column="1">
              <widget class="QLabel" name="lblIonizacion">
               <property name="text">
                <string>-- eV</string>
               </property>
              </widget>
             </item>
-            <item row="4" column="0">
-             <widget class="QLabel" name="lblTagSimetria">
-              <property name="text">
-               <string>Simetría:</string>
-              </property>
-             </widget>
-            </item>
-            <item row="4" column="1">
-             <widget class="QLabel" name="lblSimetria">
-              <property name="text">
-               <string>--</string>
-              </property>
-             </widget>
-            </item>
-            <item row="5" column="0">
+            <item row="3" column="0">
              <widget class="QLabel" name="lblTagDipolo">
               <property name="text">
                <string>Momento Dipolar:</string>
               </property>
              </widget>
             </item>
-            <item row="5" column="1">
+            <item row="3" column="1">
              <widget class="QLabel" name="lblDipolo">
               <property name="text">
                <string>-- D</string>
               </property>
              </widget>
             </item>
-            <item row="6" column="0">
+            <item row="4" column="0">
              <widget class="QLabel" name="lblTagTiempo">
               <property name="text">
                <string>Tiempo CPU:</string>
               </property>
              </widget>
             </item>
-            <item row="6" column="1">
+            <item row="4" column="1">
              <widget class="QLabel" name="lblTiempoCpu">
               <property name="text">
                <string>--s</string>
@@ -637,10 +609,38 @@
     <property name="title">
      <string>&amp;Archivo</string>
     </property>
+    <widget class="QMenu" name="menuImportar_Calculo_Externo">
+     <property name="title">
+      <string>📥 Importar Resultados de ORCA </string>
+     </property>
+     <addaction name="actionGeometria_Puntual"/>
+     <addaction name="actionTrayectoria_Optimizacion"/>
+     <addaction name="actionCalculo_de_frecuencias"/>
+     <addaction name="separator"/>
+    </widget>
+    <widget class="QMenu" name="menuImportar_Resultados_MOPAC">
+     <property name="title">
+      <string>📥 Importar Resultados MOPAC</string>
+     </property>
+     <addaction name="actionImportar_opt"/>
+     <addaction name="actionimportar_Trayectoria"/>
+     <addaction name="actionImportar_Frq"/>
+    </widget>
     <addaction name="actionNuevo"/>
     <addaction name="actionAbrir"/>
     <addaction name="actionGuardar"/>
     <addaction name="actionGuardarComo"/>
+    <addaction name="separator"/>
+    <addaction name="separator"/>
+    <addaction name="separator"/>
+    <addaction name="menuImportar_Resultados_MOPAC"/>
+    <addaction name="menuImportar_Calculo_Externo"/>
+    <addaction name="separator"/>
+    <addaction name="actionExportar_Input_para_MOPAC"/>
+    <addaction name="actionExportar_archivo_ORCA"/>
+    <addaction name="separator"/>
+    <addaction name="actionArchivo_xyz_ORCA"/>
+    <addaction name="separator"/>
     <addaction name="actionCerrar"/>
     <addaction name="separator"/>
     <addaction name="actionSalir"/>
@@ -660,6 +660,8 @@
      <string>&amp;Calculo QM</string>
     </property>
     <addaction name="actionDetenerSimulacion"/>
+    <addaction name="actionConfigurar_Parametros_QM"/>
+    <addaction name="actionLanzar_Simulacion_Cuantica"/>
    </widget>
    <addaction name="menuArchivo"/>
    <addaction name="menuEditar"/>
@@ -677,9 +679,11 @@
     <bool>false</bool>
    </attribute>
    <addaction name="actionSalir"/>
+   <addaction name="actionCerrar"/>
+   <addaction name="separator"/>
+   <addaction name="separator"/>
    <addaction name="actionNuevo"/>
    <addaction name="actionAbrir"/>
-   <addaction name="actionCerrar"/>
    <addaction name="actionGuardar"/>
    <addaction name="actionGuardarComo"/>
    <addaction name="separator"/>
@@ -693,6 +697,16 @@
    <addaction name="actionComentarioProyecto"/>
    <addaction name="actionLimpiarLienzo"/>
    <addaction name="actionDetenerSimulacion"/>
+   <addaction name="separator"/>
+   <addaction name="separator"/>
+   <addaction name="actionExportar_archivo_ORCA"/>
+   <addaction name="actionExportar_Input_para_MOPAC"/>
+   <addaction name="separator"/>
+   <addaction name="separator"/>
+   <addaction name="separator"/>
+   <addaction name="actionGeometria_Puntual"/>
+   <addaction name="actionTrayectoria_Optimizacion"/>
+   <addaction name="actionCalculo_de_frecuencias"/>
   </widget>
   <action name="actionNuevo">
    <property name="icon">
@@ -814,7 +828,130 @@
      <normaloff>:/iconos/detener.png</normaloff>:/iconos/detener.png</iconset>
    </property>
    <property name="text">
-    <string>Detener Simulacion Activa</string>
+    <string>⏹️ Abortar Proceso Activo</string>
+   </property>
+   <property name="toolTip">
+    <string>⏹️ Abortar Proceso Activo</string>
+   </property>
+  </action>
+  <action name="actionGeometria_Puntual">
+   <property name="icon">
+    <iconset resource="iconos.qrc">
+     <normaloff>:/iconos/opt.png</normaloff>:/iconos/opt.png</iconset>
+   </property>
+   <property name="text">
+    <string>⚛️ Geometría Estacionaria Final (.xyz)</string>
+   </property>
+   <property name="toolTip">
+    <string>⚛️ Geometría Estacionaria Final (.xyz)</string>
+   </property>
+  </action>
+  <action name="actionTrayectoria_Optimizacion">
+   <property name="icon">
+    <iconset resource="iconos.qrc">
+     <normaloff>:/iconos/optimizacion.png</normaloff>:/iconos/optimizacion.png</iconset>
+   </property>
+   <property name="text">
+    <string>🎞️ Película de Pasos / Trayectoria (_trj.xyz)</string>
+   </property>
+   <property name="toolTip">
+    <string>🎞️ Película de Pasos / Trayectoria (_trj.xyz)</string>
+   </property>
+  </action>
+  <action name="actionCalculo_de_frecuencias">
+   <property name="icon">
+    <iconset resource="iconos.qrc">
+     <normaloff>:/iconos/frecuencias.png</normaloff>:/iconos/frecuencias.png</iconset>
+   </property>
+   <property name="text">
+    <string>📈 Matriz Hessiana / Espectro IR (.hess)</string>
+   </property>
+   <property name="toolTip">
+    <string>📈 Matriz Hessiana / Espectro IR (.hess)</string>
+   </property>
+  </action>
+  <action name="actionExportar_archivo_ORCA">
+   <property name="icon">
+    <iconset resource="iconos.qrc">
+     <normaloff>:/iconos/exportar.png</normaloff>:/iconos/exportar.png</iconset>
+   </property>
+   <property name="text">
+    <string>📤 Exportar Input para ORCA (.inp)...</string>
+   </property>
+   <property name="toolTip">
+    <string>📤 Exportar Input para ORCA (.inp)...</string>
+   </property>
+  </action>
+  <action name="actionArchivo_xyz_ORCA">
+   <property name="icon">
+    <iconset resource="iconos.qrc">
+     <normaloff>:/iconos/xyz.jpeg</normaloff>:/iconos/xyz.jpeg</iconset>
+   </property>
+   <property name="text">
+    <string>🚨 Rescatar Estructura Truncada (.xyz)</string>
+   </property>
+   <property name="toolTip">
+    <string>🚨 Rescatar Estructura Truncada (.xyz)</string>
+   </property>
+  </action>
+  <action name="actionConfigurar_Parametros_QM">
+   <property name="icon">
+    <iconset resource="iconos.qrc">
+     <normaloff>:/iconos/configurar.png</normaloff>:/iconos/configurar.png</iconset>
+   </property>
+   <property name="text">
+    <string>⚙️ Configurar Parámetros QM</string>
+   </property>
+   <property name="toolTip">
+    <string>⚙️ Configurar Parámetros QM</string>
+   </property>
+  </action>
+  <action name="actionLanzar_Simulacion_Cuantica">
+   <property name="icon">
+    <iconset resource="iconos.qrc">
+     <normaloff>:/iconos/iniciar.png</normaloff>:/iconos/iniciar.png</iconset>
+   </property>
+   <property name="text">
+    <string>▶️ Lanzar Simulación Cuántica</string>
+   </property>
+   <property name="toolTip">
+    <string>▶️ Lanzar Simulación Cuántica</string>
+   </property>
+  </action>
+  <action name="actionExportar_Input_para_MOPAC">
+   <property name="icon">
+    <iconset resource="iconos.qrc">
+     <normaloff>:/iconos/exportar.png</normaloff>:/iconos/exportar.png</iconset>
+   </property>
+   <property name="text">
+    <string>📤 Exportar Input para MOPAC</string>
+   </property>
+   <property name="toolTip">
+    <string>📤 Exportar Input para MOPAC</string>
+   </property>
+  </action>
+  <action name="actionImportar_opt">
+   <property name="text">
+    <string>⚛️ Geometría Estacionaria Final (.xyz)</string>
+   </property>
+   <property name="toolTip">
+    <string>⚛️ Geometría Estacionaria Final (.xyz)</string>
+   </property>
+  </action>
+  <action name="actionimportar_Trayectoria">
+   <property name="text">
+    <string>🎞️ Película de Pasos / Trayectoria (_trj.xyz)</string>
+   </property>
+   <property name="toolTip">
+    <string>🎞️ Película de Pasos / Trayectoria (_trj.xyz)</string>
+   </property>
+  </action>
+  <action name="actionImportar_Frq">
+   <property name="text">
+    <string>📈 Matriz Hessiana / Espectro IR (.hess)</string>
+   </property>
+   <property name="toolTip">
+    <string>📈 Matriz Hessiana / Espectro IR (.hess)</string>
    </property>
   </action>
  </widget>

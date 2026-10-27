@@ -330,6 +330,413 @@ void View::lanzarCalculoQm(int programa, int calculo){
     }
 }
 
+void View::exportarOrca(const QString& ruta){
+    if (m_listaAtomos.isEmpty()) return; // Salvaguarda: si el lienzo está vacío, no exportamos nada
+
+    // =========================================================================
+    // PASO 1: GENERACIÓN DEL ARCHIVO DE ENTRADA CUÁNTICO (.inp)
+    // =========================================================================
+    QFile archivoInp(ruta);
+    if (archivoInp.open(QIODevice::WriteOnly | QIODevice::Text)) {
+        QTextStream out(&archivoInp);
+
+        // 1. Inyectamos la línea de comandos/argumentos que el usuario configuró en la UI
+        out << m_argumentosOrca << "\n";
+
+        // 2. Iniciamos el bloque de coordenadas estándar (Carga = 0, Multiplicidad = 1)
+        out << "* xyz 0 1\n";
+
+        // 3. Recorremos los átomos desescalando los píxeles de la escena a Ángstroms
+        const float PIXELES_POR_ANGSTROM = 100.0f;
+        for (const Atomo& a : m_listaAtomos) {
+            float x = a.posicion.x() / PIXELES_POR_ANGSTROM;
+            float y = a.posicion.y() / PIXELES_POR_ANGSTROM;
+            float z = a.posicion.z() / PIXELES_POR_ANGSTROM;
+
+            out << QString("%1   %2   %3   %4\n")
+                       .arg(a.simbolo)
+                       .arg(x, 0, 'f', 6)
+                       .arg(y, 0, 'f', 6)
+                       .arg(z, 0, 'f', 6);
+        }
+
+        // 4. Cerramos el bloque de coordenadas de ORCA
+        out << "*\n";
+        archivoInp.close();
+    }
+
+    // =========================================================================
+    // PASO 2: CREACIÓN DEL ARCHIVO GUARDIÁN DE CONECTIVIDAD (.vismol)
+    // =========================================================================
+    // Modificamos la extensión del archivo final para fabricar el nombre espejo
+    // Ejemplo: "/ruta/proyecto_hbo.inp" -> "/ruta/proyecto_hbo.vismol"
+    QString rutaEspejoVisMol = ruta.section('.', 0, -2) + ".vismol";
+
+    // Invocamos directamente tu rutina de Datos para salvar átomos, enlaces y notas
+    Datos::guardarVisMol(rutaEspejoVisMol, m_listaAtomos, m_listaEnlaces, m_comentario);
+}
+
+void View::exportarMopac(const QString& ruta) {
+    if (m_listaAtomos.isEmpty()) return; // Salvaguarda preventiva
+
+    // =========================================================================
+    // PASO 1: GENERACIÓN DEL ARCHIVO DE ENTRADA SEMIEMPÍRICO (.mop)
+    // =========================================================================
+    QFile archivoMop(ruta);
+    if (archivoMop.open(QIODevice::WriteOnly | QIODevice::Text)) {
+        QTextStream out(&archivoMop);
+
+        // Si la caja de argumentos de la RAM está vacía, preconfiguramos un estándar estable
+        if (m_argumentosMopac.trimmed().isEmpty()) {
+            m_argumentosMopac = "PM7 OPT DIPOLE NOINTER";
+        }
+
+        // Línea 1: Keywords de MOPAC (Método, Tarea y modificadores)
+        out << m_argumentosMopac.trimmed().toUpper() << "\n";
+
+        // Línea 2 y 3: Título y comentarios obligatorios exigidos por el parser de MOPAC
+        QString nombreBase = QFileInfo(ruta).baseName();
+        out << "VisMol Automated Export - " << nombreBase << "\n\n";
+
+        // Matriz Atómica: Símbolo X flagX Y flagY Z flagZ
+        const float PIXELES_POR_ANGSTROM = 100.0f;
+        for (const Atomo& a : m_listaAtomos) {
+            float x = a.posicion.x() / PIXELES_POR_ANGSTROM;
+            float y = a.posicion.y() / PIXELES_POR_ANGSTROM;
+            float z = a.posicion.z() / PIXELES_POR_ANGSTROM;
+
+            // Inyectamos las coordenadas en Ángstroms seguidas del flag "1"
+            // que le indica a MOPAC que debe optimizar libremente ese eje espacial
+            out << QString("%1  %2 1  %3 1  %4 1\n")
+                       .arg(a.simbolo.leftJustified(2))
+                       .arg(x, 12, 'f', 6)
+                       .arg(y, 12, 'f', 6)
+                       .arg(z, 12, 'f', 6);
+        }
+        archivoMop.close();
+    }
+
+    // =========================================================================
+    // PASO 2: CREACIÓN DEL ARCHIVO GUARDIÁN DE CONECTIVIDAD (.vismol)
+    // =========================================================================
+    // Modificamos la extensión de la ruta para empaquetar el respaldo estructural
+    // Ejemplo: "/ruta/hbo_S1.mop" -> "/ruta/hbo_S1.vismol"
+    QString rutaEspejoVisMol = ruta.section('.', 0, -2) + ".vismol";
+    Datos::guardarVisMol(rutaEspejoVisMol, m_listaAtomos, m_listaEnlaces, m_comentario);
+}
+
+void View::importarORCA(const QString& rutaFichero, int calculo) {
+    Q_UNUSED(calculo);
+
+    // 1. Deducimos el nombre base eliminando la extensión original (.xyz o .hess)
+    QString rutaBase = rutaFichero.section('.', 0, -2);
+
+    // Si estamos en una trayectoria (_trj.xyz), limpiamos el sufijo para buscar el .vismol original
+    if (rutaBase.endsWith("_trj", Qt::CaseInsensitive)) {
+        rutaBase = rutaBase.left(rutaBase.length() - 4);
+    }
+
+    QString rutaGemelaVisMol = rutaBase + ".vismol";
+
+    // Comprobación de seguridad en el disco duro
+    if (!QFileInfo::exists(rutaGemelaVisMol)) return;
+
+    setEstadoHistorial(); // Respaldo preventivo en el Deshacer
+
+    // =========================================================================
+    // PASO A: CARGAR ENLACES Y ESTRUCTURA BASE DEL VISMOL
+    // =========================================================================
+    bool exitoVisMol = Datos::abrirVisMol(rutaGemelaVisMol, m_listaAtomos, m_listaEnlaces, m_comentario);
+    if (!exitoVisMol) return;
+
+    // =========================================================================
+    // PASO B: ABRIR EL ARCHIVO SELECCIONADO Y APLICAR PARSER DIRECTO
+    // =========================================================================
+    QFile archivoIn(rutaFichero);
+    if (!archivoIn.open(QIODevice::ReadOnly | QIODevice::Text)) return;
+    QTextStream streamIn(&archivoIn);
+
+    bool exitoCarga = false;
+
+    if (rutaFichero.endsWith(".hess", Qt::CaseInsensitive)) {
+        // Canal Frecuencias (IR)
+        exitoCarga = Datos::leerOrcaHessFrecuencias(streamIn, m_listaAtomos, m_modosVibracionales);
+    }
+    else if (rutaFichero.contains("_trj.xyz", Qt::CaseInsensitive)) {
+        // Canal Película / Trayectoria
+        exitoCarga = Datos::leerOrcaTrayectoria(streamIn, m_pelicula, m_calores, m_listaAtomos);
+    }
+    else {
+        // Canal Geometría Puntual Estática
+        exitoCarga = Datos::leerOrcaXyz(streamIn, m_listaAtomos);
+    }
+    archivoIn.close();
+
+    // Inyección limpia y repetitiva de enlaces en las celdas de la película
+    for (int i = 0; i < m_pelicula.size(); ++i) {
+        m_pelicula[i].listaEnlaces = m_listaEnlaces;
+    }
+
+    // =========================================================================
+    // PASO C: RESCATE DE VALORES CUÁNTICOS Y CONSOLIDACIÓN DE ESTADOS
+    // =========================================================================
+    if (exitoCarga) {
+        m_argumentosOrca = ""; // Requisito de diseño: argumentos y comentarios vacíos
+        m_comentario     = "";
+
+        // Inicializamos los valores por defecto
+        m_valoresCalculo.energia        = "-- u.a.";
+        m_valoresCalculo.calorFormacion = "-- kcal/mol";
+        m_valoresCalculo.ionizacion     = "-- eV";
+        m_valoresCalculo.dipolo         = "-- D";
+        m_valoresCalculo.tiempoCpu      = "-- s";
+
+        // 🎯 EL RESCATE SECUENCIAL: Si existe el .property.txt vecino, absorbemos los datos de golpe
+        QString rutaProp = rutaBase + ".property.txt";
+        if (QFileInfo::exists(rutaProp)) {
+            QFile archivoProp(rutaProp);
+            if (archivoProp.open(QIODevice::ReadOnly | QIODevice::Text)) {
+                QTextStream streamProp(&archivoProp);
+                Datos::leerOrcaPropertySummary(streamProp, m_valoresCalculo); // Rellena m_valoresCalculo
+                archivoProp.close();
+            }
+        }
+
+        // Configuración común de la UI
+        m_estado.estaEmpezado = true; //
+        m_estado.modoEditor   = ModoEditor::ModoRotacion3D; // Órbita interactiva
+
+        if (rutaFichero.endsWith(".hess", Qt::CaseInsensitive)) {
+            m_estado.estaOptimizado = true; //
+            m_estado.hayTrayectoria = false; //
+            m_estado.hayFrecuencias = !m_modosVibracionales.isEmpty();
+        }
+        else if (rutaFichero.contains("_trj.xyz", Qt::CaseInsensitive)) {
+            m_estado.estaOptimizado = true; //
+            m_estado.hayTrayectoria = !m_pelicula.isEmpty();
+            m_estado.hayFrecuencias = false; //
+
+            if (!m_pelicula.isEmpty()) {
+                m_fotogramaActual = m_pelicula.size() - 1; //
+                m_listaAtomos = m_pelicula[m_fotogramaActual].listaAtomos;
+                // Si la trayectoria no tenía satélite de propiedades, inyectamos el calor del último frame
+                if (m_valoresCalculo.energia == "-- u.a.") {
+                    m_valoresCalculo.energia = m_pelicula[m_fotogramaActual].valoresCalculo.energia;
+                    m_valoresCalculo.calorFormacion = m_pelicula[m_fotogramaActual].valoresCalculo.calorFormacion;
+                }
+            }
+        }
+        else {
+            m_estado.estaOptimizado = true; // Geometría Puntual Convergida con éxito
+            m_estado.hayTrayectoria = false; //
+            m_estado.hayFrecuencias = false;
+        }
+
+        // Estabilizado y sincronización del renderizado
+        centrarListaAtomos(m_listaAtomos);
+        m_listaAtomosTrabajo = m_listaAtomos; //
+
+        // =========================================================================
+        // 🎯 REPARACIÓN QUIRÚRGICA: SINCRONIZAR EL CONTADOR INCREMENTAL DE IDS
+        // =========================================================================
+        // Escaneamos la lista recién importada para buscar el ID más alto
+        // y dejar la variable m_contadorId lista para añadir átomos sin colisiones.
+        int maxIdDetectado = 0;
+        for (const Atomo& a : m_listaAtomos) {
+            if (a.id > maxIdDetectado) {
+                maxIdDetectado = a.id;
+            }
+        }
+        m_contadorId = maxIdDetectado; // Si el HBO tenía 25 átomos, m_contadorId vale 25.
+
+        // Sincronización inmutable para apagar el asterisco '*' de Qt
+        m_numeroAtomos  = m_listaAtomos.size();
+        m_numeroEnlaces = m_listaEnlaces.size();
+
+        m_estado.estaModificado = false; // Estado guardado y consolidado
+        m_estado.estaGuardado   = true;
+    }
+
+    notificaEstado(); // Repintar el lienzo molecular de Qt
+}
+
+void View::cargarXyzORCA(const QString& rutaXyz, int calculo){
+    Q_UNUSED(calculo);
+
+    // 1. Deducimos el nombre base y la ubicación del guardián .vismol
+    QString rutaBase = rutaXyz.section('.', 0, -2);
+    QString rutaGemelaVisMol = rutaBase + ".vismol";
+
+    // 2. PASO A: Cargar el esqueleto base y los enlaces químicos desde el .vismol
+    setEstadoHistorial(); // Respaldo reglamentario en la pila de Deshacer
+    bool exitoVisMol = Datos::abrirVisMol(rutaGemelaVisMol, m_listaAtomos, m_listaEnlaces, m_comentario);
+    if (!exitoVisMol) return;
+
+    // 3. PASO B: Abrir el .xyz e inyectar las posiciones en memoria usando tu parser nativo
+    QFile archivoXyz(rutaXyz);
+    if (!archivoXyz.open(QIODevice::ReadOnly | QIODevice::Text)) return;
+    QTextStream streamXyz(&archivoXyz);
+
+    // Reutiliza directamente tu rutina original que ya lee las columnas [1],[2],[3] de forma perfecta
+    bool exitoXyz = Datos::leerOrcaXyz(streamXyz, m_listaAtomos);
+    archivoXyz.close();
+
+    // 4. PASO C: Consolidar la memoria y enviar a la vista con sus banderas correspondientes
+    if (exitoXyz) {
+        centrarListaAtomos(m_listaAtomos);
+        m_listaAtomosTrabajo = m_listaAtomos; // Sincronizamos el clon de renderizado
+
+        // CONFIGURACIÓN DE LAS BANDERAS REALES PEDIDAS:
+        m_estado.estaEmpezado   = true;  // Cargado: despierta el Lienzo y las herramientas
+        m_estado.estaOptimizado = false; // No optimizado: es una lectura de coordenadas puras, no el log final .out
+        m_estado.modoEditor     = ModoEditor::ModoRotacion3D; // Forzamos órbita interactiva
+        m_estado.hayTrayectoria = false;
+        m_estado.hayFrecuencias = false;
+
+        // Modificado = true para permitir salvar el ensamble
+        m_estado.estaModificado = true;
+        m_estado.estaGuardado   = false;
+    }
+
+    notificaEstado(); // Dispara actualizarUi() en la Vista para repintar las esferas y líneas
+}
+
+void View::importarMopac(const QString& rutaFichero, int calculo) {
+    Q_UNUSED(calculo);
+
+    // 1. Deducimos el nombre base eliminando la extensión original (.out o .aux)
+    QString rutaBase = rutaFichero.section('.', 0, -2);
+
+    // Buscamos el guardián de conectividad real gemelo (ej: /ruta/hbo_S1.vismol)
+    QString rutaGemelaVisMol = rutaBase + ".vismol";
+
+    // Comprobación estricta de seguridad en el disco duro
+    if (!QFileInfo::exists(rutaGemelaVisMol)) return;
+
+    setEstadoHistorial(); // Respaldo preventivo en el historial de Deshacer
+
+    // =========================================================================
+    // PASO A: CARGAR ESTRUCTURA BASE Y ENLACES DEL VISMOL ORIGINAL
+    // =========================================================================
+    bool exitoVisMol = Datos::abrirVisMol(rutaGemelaVisMol, m_listaAtomos, m_listaEnlaces, m_comentario);
+    if (!exitoVisMol) return;
+
+    int totalAtomsEsperados = m_listaAtomos.size();
+
+    // =========================================================================
+    // PASO B: ABRIR EL ARCHIVO SELECCIONADO Y CANALIZAR AL PARSER CORRESPONDIENTE
+    // =========================================================================
+    QFile archivoIn(rutaFichero);
+    if (!archivoIn.open(QIODevice::ReadOnly | QIODevice::Text)) return;
+    QTextStream streamIn(&archivoIn);
+
+    bool exitoCarga = false;
+    ValoresCalculo nuevosValores;
+
+    // Inicializamos el contenedor con guiones base por diseño higiénico
+    nuevosValores.energia        = "-- u.a.";
+    nuevosValores.calorFormacion = "-- kcal/mol";
+    nuevosValores.ionizacion     = "-- eV";
+    nuevosValores.simetria       = "--";
+    nuevosValores.dipolo         = "-- D";
+    nuevosValores.tiempoCpu      = "-- s";
+
+    // 🎯 CONMUTADOR DE TRES VÍAS MEJORADO (ADMITE .OUT Y .ARC)
+    if (rutaFichero.endsWith(".aux", Qt::CaseInsensitive)) {
+        // 2️⃣ CANAL TRAYECTORIA (.AUX)
+        exitoCarga = Datos::leerMopacAuxTrayectoria(streamIn, m_pelicula, m_listaAtomos);
+    }
+    else {
+        // Analizamos el contenido si el archivo es un log .out
+        if (rutaFichero.endsWith(".out", Qt::CaseInsensitive)) {
+            QString todoElTexto = streamIn.readAll();
+            streamIn.device()->seek(0); // Rebobinamos
+
+            if (todoElTexto.contains("NORMAL COORDINATE ANALYSIS", Qt::CaseInsensitive)) {
+                // 3️⃣ CANAL FRECUENCIAS (IR desde .out)
+                exitoCarga = Datos::leerMopacOutSoloFrecuencias(streamIn, m_listaAtomos, m_modosVibracionales);
+                streamIn.device()->seek(0);
+                Datos::leerMopacArcSummary(streamIn, m_listaAtomos, nuevosValores);
+            } else {
+                // 1️⃣ CANAL GEOMETRÍA PUNTUAL (.out convencional)
+                exitoCarga = Datos::leerMopacOutOptNoInter(streamIn, m_listaAtomos, nuevosValores);
+            }
+        }
+        else if (rutaFichero.endsWith(".arc", Qt::CaseInsensitive)) {
+            // 🎯 ADICIÓN QUIRÚRGICA: Canal de Rescate de archivos compactos .arc
+            // Reutiliza directamente tu summary nativo que extrae calores y coordenadas de golpe
+            exitoCarga = Datos::leerMopacArcSummary(streamIn, m_listaAtomos, nuevosValores);
+        }
+    }
+    archivoIn.close();
+
+    // =========================================================================
+    // PASO B-bis: ADJUNTAR ENLACES REPETITIVOS EN LAS CELDAS DE LA PELÍCULA
+    // =========================================================================
+    for (int i = 0; i < m_pelicula.size(); ++i) {
+        m_pelicula[i].listaEnlaces = m_listaEnlaces;
+    }
+
+    // =========================================================================
+    // PASO C: CONSOLIDAR LA MÁQUINA DE ESTADOS Y SINCRONIZAR LA UI
+    // =========================================================================
+    if (exitoCarga) {
+        m_argumentosMopac = ""; // Requisito de diseño: argumentos y comentarios vacíos
+        m_comentario      = "";
+
+        // Si fue un canal estático (.out), volcamos el summary extraído en el paso anterior
+        if (!rutaFichero.endsWith(".aux", Qt::CaseInsensitive)) {
+            m_valoresCalculo = nuevosValores;
+        }
+
+        // Configuración adaptativa de banderas de la UI
+        m_estado.estaEmpezado = true;
+        m_estado.modoEditor   = ModoEditor::ModoRotacion3D; // Órbita 3D activa
+
+        if (rutaFichero.endsWith(".aux", Qt::CaseInsensitive)) {
+            m_estado.estaOptimizado = true;
+            m_estado.hayTrayectoria = !m_pelicula.isEmpty();
+            m_estado.hayFrecuencias = false;
+
+            if (!m_pelicula.isEmpty()) {
+                m_fotogramaActual = m_pelicula.size() - 1;
+                m_listaAtomos = m_pelicula[m_fotogramaActual].listaAtomos;
+                m_valoresCalculo = m_pelicula[m_fotogramaActual].valoresCalculo;
+            }
+        }
+        else if (m_estado.hayFrecuencias) {
+            m_estado.estaOptimizado = true;
+            m_estado.hayTrayectoria = false;
+            m_estado.hayFrecuencias = !m_modosVibracionales.isEmpty();
+        }
+        else {
+            m_estado.estaOptimizado = true; // Geometría Puntual Convergida con éxito
+            m_estado.hayTrayectoria = false;
+            m_estado.hayFrecuencias = false;
+        }
+
+        // Estabilizado espacial de la estructura
+        centrarListaAtomos(m_listaAtomos);
+        m_listaAtomosTrabajo = m_listaAtomos;
+
+        // Sincronizar el ID incremental buscando el átomo más alto cargado
+        int maxIdDetectado = 0;
+        for (const Atomo& a : m_listaAtomos) {
+            if (a.id > maxIdDetectado) maxIdDetectado = a.id;
+        }
+        m_contadorId = maxIdDetectado;
+
+        // Sincronización inmutable para apagar el asterisco '*' de Qt
+        m_numeroAtomos  = m_listaAtomos.size();
+        m_numeroEnlaces = m_listaEnlaces.size();
+
+        m_estado.estaModificado = false;
+        m_estado.estaGuardado   = true;
+    }
+
+    notificaEstado(); // Ordena a la vista ejecutar actualizarUi() de golpe
+}
+
 Estado View::getEstado(){
     return m_estado;
 }

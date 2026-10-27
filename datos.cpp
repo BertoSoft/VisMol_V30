@@ -516,11 +516,12 @@ bool Datos::leerMopacOutSoloFrecuencias(
     QMap<int, int> mapaRootNoAModoFiltrado;
 
     // =========================================================================
-    // 5. ENSAMBLAR Y APLICAR FILTRO ESTRICTO TRASLACIONAL / ROTACIONAL
+    // FASE 5: ENSAMBLAR Y APLICAR FILTRO ADMITIENDO VALORES NEGATIVOS
     // =========================================================================
     for (int i = 0; i < todasLasFrecuenciasDetectadas.size(); ++i) {
         float valorCm1 = mapaFrecuencias[i];
 
+        // Mismo umbral de seguridad: solo purga los 6 modos de traslación/rotación moleculares en torno a cero
         if (valorCm1 < 20.0f && valorCm1 > -20.0f) {
             continue;
         }
@@ -540,8 +541,9 @@ bool Datos::leerMopacOutSoloFrecuencias(
             modo.numero = m_modosVibracionales.size() + 1;
             modo.frecuencia = valorCm1;
 
-            // 🎯 CAMBIO 1: Inicializamos con un valor centinela negativo por defecto
-            modo.intensidad = -1.0f;
+            // 🎯 REPARACIÓN DE INTERCAMBIO: Inicializamos en 0.0f (no en -1.0f)
+            // para que no sea destruido por el filtro estricto de la lista de la UI.
+            modo.intensidad = 0.0f;
 
             modo.desplazamientos = desplazamientosModo;
 
@@ -790,12 +792,30 @@ bool Datos::leerOrcaPropertySummary(
         // =====================================================================
         // 1. ENERGÍA TOTAL ABSOLUTA (CORREGIDO: Filtro estricto anti-tablas)
         // =====================================================================
-        if (seccionActual == "$SCF_Energy" || seccionActual == "$Single_Point_Data") {
-            // Captura la línea con '&FinalEnergy' o la fila de datos pura de la energía (0 y el valor)
-            if (linea.contains("FinalEnergy") || (tokens.first() == "0" && tokens.size() == 2)) {
+        // =====================================================================
+        // 🎯 CAMBIO QUIRÚRGICO DE PIES DE PLOMO: Extraer Energía Final Corregida
+        // =====================================================================
+        if (seccionActual == "$Single_Point_Data" && linea.contains("FinalEnergy")) {
+            // Aislamos el último token rompiendo por los corchetes de ORCA 6
+            QString valorLimpio = linea.section(']', -1).simplified();
+            QStringList subTokens = valorLimpio.split(' ', Qt::SkipEmptyParts);
+
+            if (!subTokens.isEmpty()) {
+                bool ok;
+                double eVale = subTokens.first().toDouble(&ok);
+                if (ok && eVale < -1.0) {
+                    valores.energia = QString("%1 u.a.").arg(eVale, 0, 'f', 6);
+                    valores.calorFormacion = QString("%1 kcal/mol (Etot)").arg(eVale * 627.5093, 0, 'f', 2);
+                    exito = true;
+                }
+            }
+        }
+        else if (seccionActual == "$SCF_Energy" && valores.energia.isEmpty()) {
+            // Respaldo secundario: solo lee la SCF si no existe el Single Point final corregido
+            if (tokens.first() == "0" && tokens.size() == 2) {
                 bool ok;
                 double eVale = tokens.last().toDouble(&ok);
-                if (ok && eVale < -1.0) { // Salvaguarda: las energías moleculares totales siempre son muy negativas
+                if (ok && eVale < -1.0) {
                     valores.energia = QString("%1 u.a.").arg(eVale, 0, 'f', 6);
                     valores.calorFormacion = QString("%1 kcal/mol (Etot)").arg(eVale * 627.5093, 0, 'f', 2);
                     exito = true;
@@ -885,8 +905,8 @@ bool Datos::leerOrcaTrayectoria(
         ValoresCalculo valoresFotograma;
         float calorKcal = 0.0f;
 
-        if (segundaLinea.contains(" E ")) {
-            QString energiaStr = segundaLinea.section(" E ", 1).trimmed();
+        if (segundaLinea.contains(" E")) {
+            QString energiaStr = segundaLinea.section(" E", -1).trimmed(); // Captura el último fragmento tras " E"
             bool ok;
             double energiaHartree = energiaStr.toDouble(&ok);
             if (ok) {
@@ -1085,18 +1105,21 @@ bool Datos::leerOrcaHessFrecuencias(
     }
 
     // =========================================================================
-    // FASE 4: ENSAMBLAJE DE MODOS FILTRANDO ROTACIONES/TRASLACIONES (Freq > 20 cm⁻¹)
+    // FASE 4: ENSAMBLAJE DE MODOS ADMITIENDO FRECUENCIAS IMAGINARIAS (NEGATIVAS)
     // =========================================================================
     for (int i = 0; i < frecuenciasTemporales.size(); ++i) {
         float valorCm1 = frecuenciasTemporales[i];
 
-        // Filtro cuántico estricto: Eliminamos los primeros 6 modos residuales (valores cercanos a 0.0)
+        // 🎯 FILTRO ACUÑADO CON PIES DE PLOMO:
+        // Eliminamos ÚNICAMENTE los 6 modos residuales de rotación/traslación pura de la molécula
+        // que se sitúan en el umbral estricto alrededor del cero absoluto (-20.0 a +20.0 cm⁻¹).
         if (valorCm1 < 20.0f && valorCm1 > -20.0f) {
             continue;
         }
 
+        // Cualquier valor menor a -20.0 cm⁻¹ es una frecuencia imaginaria real (TS) y entra libremente.
         ModoVibracional modo;
-        modo.numero = m_modosVibracionales.size() + 1; // ID auto-incremental correlativo para la UI
+        modo.numero = m_modosVibracionales.size() + 1;
         modo.frecuencia = valorCm1;
         modo.intensidad = (i < intensidadesTemporales.size()) ? intensidadesTemporales[i] : 0.0f;
         modo.desplazamientos = mapaDesplazamientos[i];
@@ -1106,3 +1129,48 @@ bool Datos::leerOrcaHessFrecuencias(
 
     return !m_modosVibracionales.isEmpty();
 }
+
+bool Datos::leerOrcaXyz(QTextStream& stream, QVector<Atomo>& listaAtomos) {
+    if (stream.atEnd() || listaAtomos.isEmpty()) return false;
+
+    // Leemos la primera línea para verificar el número de átomos
+    QString primeraLinea = stream.readLine().trimmed();
+    int numAtomsCheck = primeraLinea.toInt();
+    if (numAtomsCheck != listaAtomos.size()) return false; // Filtro de seguridad dimensional
+
+    stream.readLine(); // Saltar la línea de comentario del .xyz
+
+    QVector<QVector3D> posicionesIntermedias;
+    const float PIXELES_POR_ANGSTROM = 100.0f;
+
+    // Parseo puro de la matriz de coordenadas intermedias
+    while (!stream.atEnd()) {
+        QString linea = stream.readLine().trimmed();
+        if (linea.isEmpty()) continue;
+
+        QStringList columnas = linea.split(' ', Qt::SkipEmptyParts);
+        if (columnas.size() >= 4) {
+            bool okX, okY, okZ;
+            float xAngstrom = columnas[1].toFloat(&okX);
+            float yAngstrom = columnas[2].toFloat(&okY);
+            float zAngstrom = columnas[3].toFloat(&okZ);
+
+            if (okX && okY && okZ) {
+                posicionesIntermedias.append(QVector3D(xAngstrom * PIXELES_POR_ANGSTROM,
+                                                       yAngstrom * PIXELES_POR_ANGSTROM,
+                                                       zAngstrom * PIXELES_POR_ANGSTROM));
+            }
+        }
+    }
+
+    // Si la lectura fue exitosa, inyectamos las nuevas posiciones sobre la estructura de la RAM
+    if (posicionesIntermedias.size() == listaAtomos.size()) {
+        for (int i = 0; i < listaAtomos.size(); ++i) {
+            listaAtomos[i].posicion = posicionesIntermedias[i];
+        }
+        return true;
+    }
+
+    return false;
+}
+

@@ -80,6 +80,11 @@ public:
         QVector<ModoVibracional>& m_modosVibracionales
     );
 
+    static bool leerOrcaXyz(
+        QTextStream& stream,
+        QVector<Atomo>& listaAtomos
+    );
+
 };
 
 #endif // DATOS_H

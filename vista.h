@@ -101,6 +101,28 @@ private slots:
 
     void on_actionDetenerSimulacion_triggered();
 
+    void on_actionGeometria_Puntual_triggered();
+
+    void on_actionTrayectoria_Optimizacion_triggered();
+
+    void on_actionCalculo_de_frecuencias_triggered();
+
+    void on_actionExportar_archivo_ORCA_triggered();
+
+    void on_actionArchivo_xyz_ORCA_triggered();
+
+    void on_actionConfigurar_Parametros_QM_triggered();
+
+    void on_actionLanzar_Simulacion_Cuantica_triggered();
+
+    void on_actionExportar_Input_para_MOPAC_triggered();
+
+    void on_actionImportar_opt_triggered();
+
+    void on_actionimportar_Trayectoria_triggered();
+
+    void on_actionImportar_Frq_triggered();
+
 private:
     Ui::Vista *ui;
 

@@ -109,7 +109,11 @@ public:
     void            guardarProyecto();
     void            cerrarProyecto();
     void            lanzarCalculoQm(int programa, int calculo);
-
+    void            exportarOrca(const QString& ruta);
+    void            exportarMopac(const QString& ruta);
+    void            importarORCA(const QString& rutaXyz, int calculo);
+    void            importarMopac(const QString& rutaFichero, int calculo); // ◄ TU NUEVO CONMUTADOR DE TRES VÍAS
+    void            cargarXyzORCA(const QString& rutaXyz, int calculo);
 
     Estado          getEstado();
     ValoresCalculo  getValoresCalculo();

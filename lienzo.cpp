@@ -100,8 +100,10 @@ void Lienzo::renderAtomos(){
             anilloSel->setPen(penSel); anilloSel->setZValue(3);
         }
 
-        // Texto del Átomo (Símbolo químico)
-        QGraphicsTextItem* texto = new QGraphicsTextItem(atomo.simbolo);
+        // =========================================================================
+        // 🎯 CAMBIO QUIRÚRGICO: Concatenamos el Símbolo Químico con su ID numérico
+        // =========================================================================
+        QString textoAtomoConId = QString("%1(%2)").arg(atomo.simbolo).arg(atomo.id);        QGraphicsTextItem* texto = new QGraphicsTextItem(textoAtomoConId);
 
         QFont fuente("Segoe UI", 10, QFont::Bold);
         texto->setFont(fuente);
@@ -109,7 +111,7 @@ void Lienzo::renderAtomos(){
         // Si el átomo es Hidrógeno (Blanco), pintamos el texto oscuro; si no, blanco para contrastar
         texto->setDefaultTextColor(atomo.simbolo == "H" ? QColor("#0F172A") : Qt::white);
 
-        // Centrado matemático exacto del bloque de texto dentro de la esfera desplazada
+        // Centrado matemático exacto del bloque de texto expandido dentro de la esfera desplazada
         QRectF limitesTexto = texto->boundingRect();
         texto->setPos(xCentro - (limitesTexto.width() / 2.0f),
                       yCentro - (limitesTexto.height() / 2.0f));

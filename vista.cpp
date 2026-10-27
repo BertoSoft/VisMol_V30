@@ -290,27 +290,25 @@ void Vista::setEstilos(){
         "QFrame#barraDerecha QLabel {"
         "    color: #94A3B8;"
         "    font-weight: bold;"
+        "    font-size: 15px;" // ◄ Incrementado para las etiquetas fijas (Energía, Dipolo, etc.)
         "}"
-        // Selector específico para los valores mutables de los resultados:
-        "QLabel#lblEstado, QLabel#lblEnergia, QLabel#lblCalorFormacion, "
-        "QLabel#lblIonizacion, QLabel#lblSimetria, QLabel#lblDipolo, QLabel#lblTiempoCpu {"
-        "    color: #10B981;" // Forzamos el color verde brillante terminal para los datos variables
+
+        // Selector específico para los valores mutables que cambian de color verde terminal:
+        "QLabel#lblEnergia, QLabel#lblCalorFormacion, "
+        "QLabel#lblIonizacion, QLabel#lblDipolo, QLabel#lblTiempoCpu {"
+        "    color: #10B981;"
         "    font-family: 'Consolas', 'Courier New', monospace;"
-        "    font-size: 13px;"
+        "    font-size: 16px;" // ◄ Incrementado para los datos variables cuánticos
+        "    font-weight: bold;"
         "}"
+
         "QListWidget#listaFrecuencias {"
         "    background-color: #030712;"
         "    color: #10B981;"
         "    font-family: 'Consolas', 'Courier New', monospace;"
+        "    font-size: 14px;" // ◄ Escalado sutil para la lista de modos IR verdes
         "    border: 1px solid #1F2937;"
         "    border-radius: 4px;"
-        "}"
-
-        // 🎯 REQUISITO: Estilo adaptativo para la lista cuando el panel está inactivo
-        "QListWidget#listaFrecuencias:disabled {"
-        "    background-color: #1E293B;" /* Mismo fondo exacto que barraDerecha */
-        "    border: 1px solid #1E293B;" /* Difuminamos el borde para que se fusione */
-        "    color: #475569;"            /* Apagamos el texto de ítems residuales si los hubiera */
         "}";
 
 
@@ -469,10 +467,10 @@ void Vista::dialogoComentario(){
 void Vista::configurarCalculoMopac(){
     if (!m_view) return;
 
-    // 1. Crear el contenedor del diálogo nativo
+    // 1. Crear el contenedor del diálogo nativo de MOPAC expandido
     QDialog dlg(this);
-    dlg.setWindowTitle(tr("Configurar Parámetros de Cálculo"));
-    dlg.resize(460, 240);
+    dlg.setWindowTitle(tr("Configurar Parámetros de MOPAC (Semiempírico)"));
+    dlg.resize(480, 270);
 
     QVBoxLayout *layoutPrincipal = new QVBoxLayout(&dlg);
     layoutPrincipal->setContentsMargins(20, 20, 20, 20);
@@ -486,21 +484,30 @@ void Vista::configurarCalculoMopac(){
     QComboBox *comboMetodo = new QComboBox(&dlg);
     comboMetodo->addItems({"PM7", "PM6", "AM1", "RM1", "MNDO"});
 
-    // Combo B: Tipo de Tarea de simulación
+    // =========================================================================
+    // 🎯 NUEVO COMBO: ESTADO ELECTRÓNICO (FUNDAMENTAL S0 VS EXCITADO S1)
+    // =========================================================================
+    QLabel *lblEstadoElec = new QLabel(tr("Estado Electrónico:"), &dlg);
+    QComboBox *comboEstadoElec = new QComboBox(&dlg);
+    comboEstadoElec->addItem(tr("Singlete Fundamental (S₀)"), "");
+    comboEstadoElec->addItem(tr("Primer Singlete Excitado (S₁ / C.I.)"), "C.I.=4 SINGLET EXCITED ROOT=2");
+
+    // Combo C: Tipo de Tarea de simulación
     QLabel *lblTarea = new QLabel(tr("Tipo de Tarea:"), &dlg);
     QComboBox *comboTarea = new QComboBox(&dlg);
-    comboTarea->addItem(tr("1.- Optimización Geométrica Rápida"), "OPT");
+    comboTarea->addItem(tr("1.- Optimización Geométrica"), "OPT");
     comboTarea->addItem(tr("2.- Trayectoria Completa (Cálculo Dinámico)"), "OPT AUX LARGE");
     comboTarea->addItem(tr("3.- Modos Vibracionales / Frecuencias IR"), "AUX FORCE");
 
-    // Campo C: Línea libre para keywords personalizadas
+    // Campo D: Línea libre para keywords personalizadas del usuario
     QLabel *lblExtras = new QLabel(tr("Keywords Adicionales:"), &dlg);
     QLineEdit *txtExtras = new QLineEdit(&dlg);
-    txtExtras->setPlaceholderText(tr("Ej: CHARGE=1 PRECISE EPS=78.4"));
+    txtExtras->setPlaceholderText(tr("Ej: CHARGE=0 PRECISE EPS=78.4"));
 
-    grid->addWidget(lblMetodo, 0, 0);   grid->addWidget(comboMetodo, 0, 1);
-    grid->addWidget(lblTarea, 1, 0);    grid->addWidget(comboTarea, 1, 1);
-    grid->addWidget(lblExtras, 2, 0);   grid->addWidget(txtExtras, 2, 1);
+    grid->addWidget(lblMetodo, 0, 0);     grid->addWidget(comboMetodo, 0, 1);
+    grid->addWidget(lblEstadoElec, 1, 0); grid->addWidget(comboEstadoElec, 1, 1); // Inyección en la rejilla
+    grid->addWidget(lblTarea, 2, 0);      grid->addWidget(comboTarea, 2, 1);
+    grid->addWidget(lblExtras, 3, 0);     grid->addWidget(txtExtras, 3, 1);
 
     layoutPrincipal->addLayout(grid);
 
@@ -516,7 +523,7 @@ void Vista::configurarCalculoMopac(){
     QObject::connect(botones, &QDialogButtonBox::rejected, &dlg, &QDialog::reject);
 
     // =================================================================================
-    // 🔍 FASE DE APERTURA: Cargar el estado actual del View en los controles
+    // 🔍 FASE DE APERTURA: Sincronizar el estado actual de la RAM en los controles
     // =================================================================================
     QString argsActuales = m_view->getArgumentosMopac().toUpper();
 
@@ -528,7 +535,14 @@ void Vista::configurarCalculoMopac(){
         }
     }
 
-    // Sincronizar Combo Tarea analizando prioridades
+    // Sincronizar el NUEVO Combo de Estado Electrónico buscando la presencia de C.I.
+    if(argsActuales.contains("C.I.=") || argsActuales.contains("EXCITED")) {
+        comboEstadoElec->setCurrentIndex(1); // Singlete Excitado S1
+    } else {
+        comboEstadoElec->setCurrentIndex(0); // Suelo S0
+    }
+
+    // Sincronizar Combo Tarea analizando prioridades estructurales
     if(argsActuales.contains("FORCE")) {
         comboTarea->setCurrentIndex(2); // AUX FORCE
     } else if(argsActuales.contains("LARGE") || argsActuales.contains("AUX")) {
@@ -539,7 +553,8 @@ void Vista::configurarCalculoMopac(){
 
     // Aislar ÚNICAMENTE las palabras libres del usuario (Limpieza por tokens exactos)
     QStringList tokensActuales = argsActuales.split(' ', Qt::SkipEmptyParts);
-    QStringList keywordsEstructurales = {"PM7", "PM6", "AM1", "RM1", "MNDO", "OPT", "FORCE", "AUX", "LARGE", "DIPOLE", "NOINTER"};
+    QStringList keywordsEstructurales = {"PM7", "PM6", "AM1", "RM1", "MNDO", "OPT", "FORCE", "AUX", "LARGE",
+                                         "DIPOLE", "NOINTER", "C.I.=4", "SINGLET", "EXCITED", "ROOT=2"};
     QStringList extrasFiltrados;
 
     for (const QString& token : tokensActuales) {
@@ -558,25 +573,32 @@ void Vista::configurarCalculoMopac(){
         // 1. Inyectar el método del combo (PM7, PM6, etc.)
         nuevosKeywords << comboMetodo->currentText();
 
-        // 2. Inyectar los comandos de la tarea del combo
+        // 2. Inyectar la Tarea seleccionada
         QString tareaSeleccionada = comboTarea->currentData().toString();
         nuevosKeywords << tareaSeleccionada.split(' ', Qt::SkipEmptyParts);
 
-        // 3. Inyectar las keywords manuales ingresadas en el cuadro de texto
+        // 3. Inyectar el Estado Electrónico (Si es S1, acopla las palabras clave de Grimme/MOPAC)
+        QString estadoKeywords = comboEstadoElec->currentData().toString();
+        if (!estadoKeywords.isEmpty()) {
+            nuevosKeywords << estadoKeywords.split(' ', Qt::SkipEmptyParts);
+        }
+
+        // 4. Inyectar las keywords manuales ingresadas en el cuadro de texto
         QString extrasTexto = txtExtras->text().trimmed().toUpper();
         if(!extrasTexto.isEmpty()) {
             nuevosKeywords << extrasTexto.split(' ', Qt::SkipEmptyParts);
         }
 
-        // 4. Parámetros estáticos de acople requeridos por la aplicación
+        // 5. Parámetros estáticos corporativos de acople requeridos por la aplicación
         nuevosKeywords << "DIPOLE" << "NOINTER";
 
-        // Generación de la cadena unificada final (sin acumulación previa)
+        // Generación de la cadena unificada final libre de redundancias
         QString comandoFinal = nuevosKeywords.join(" ").simplified().trimmed();
 
-        // Guardamos el comando en el cerebro del programa y actualizamos el cuadro de texto
+        // Guardamos el comando en el cerebro del programa y actualizamos el cuadro de texto azul
         m_view->setArgumentosMopac(comandoFinal);
         ui->etArgumentos->setText(comandoFinal);
+
         m_tipoCalculo   = comboTarea->currentIndex();
         m_programa      = 0; // Mopac
     }
@@ -585,10 +607,9 @@ void Vista::configurarCalculoMopac(){
 void Vista::configurarCalculoOrca(){
     if (!m_view) return;
 
-    // 1. Crear el contenedor del diálogo nativo adaptado a ORCA
     QDialog dlg(this);
-    dlg.setWindowTitle(tr("Configurar Parámetros de ORCA"));
-    dlg.resize(480, 230); // Achatado y compacto al reducir las opciones
+    dlg.setWindowTitle(tr("Configurar Parámetros de ORCA (DFT / TD-DFT)"));
+    dlg.resize(520, 270);
 
     QVBoxLayout *layoutPrincipal = new QVBoxLayout(&dlg);
     layoutPrincipal->setContentsMargins(20, 20, 20, 20);
@@ -598,46 +619,45 @@ void Vista::configurarCalculoOrca(){
     grid->setSpacing(10);
 
     // =========================================================================
-    // 📊 COMBO A: MÉTODOS ORDENADOS
+    // 📊 COMBO A: MÉTODOS / FUNCIONALES (ORDENADOS DE MENOR A MAYOR COSTE)
     // =========================================================================
     QLabel *lblMetodo = new QLabel(tr("Método / Funcional:"), &dlg);
     QComboBox *comboMetodo = new QComboBox(&dlg);
 
-    comboMetodo->addItem("RHF",       "RHF");    // Capa cerrada
-    comboMetodo->addItem("UHF",       "UHF");    // Capa abierta
-    comboMetodo->addItem("B97-3c",    "B97-3c"); // Ultra-rápido DFT
-    comboMetodo->addItem("BP86",      "BP86");
-    comboMetodo->addItem("PBE",       "PBE");
-    comboMetodo->addItem("B3LYP",     "B3LYP");  // Estándar orgánico
-    comboMetodo->addItem("PBE0",      "PBE0");
-    comboMetodo->addItem("MP2",       "MP2");    // Post-HF pesado
+    // Clasificación rigurosa por exigencia de CPU y memoria RAM:
+    comboMetodo->addItem("1. B97-3c (Ultra-rápido / Cribado Inicial)", "B97-3c");
+    comboMetodo->addItem("2. BP86 (Gradiente Puro / Coste Bajo)", "BP86");
+    comboMetodo->addItem("3. B3LYP (Híbrido Clásico / Coste Medio)", "B3LYP");
+    comboMetodo->addItem("4. PBE0 (Híbrido Global / Coste Medio-Alto)", "PBE0");
+    comboMetodo->addItem("5. wB97X-D4 (Separación de Rango / Exigente / ESIPT)", "wB97X-D4");
+    comboMetodo->addItem("6. CAM-B3LYP (Corrección de Rango / Exigente)", "CAM-B3LYP");
 
     // =========================================================================
-    // 📐 COMBO B: BASES ORBITALES
+    // 📐 COMBO B: BASES ORBITALES (ORDENADAS DE MENOR A MAYOR TAMAÑO)
     // =========================================================================
     QLabel *lblBase = new QLabel(tr("Base Orbital (Basis Set):"), &dlg);
     QComboBox *comboBase = new QComboBox(&dlg);
 
-    comboBase->addItem("mini",       "mini");
-    comboBase->addItem("def2-SVP",   "def2-SVP");
-    comboBase->addItem("6-31G(d)",   "6-31G(d)");
-    comboBase->addItem("def2-TZVP",  "def2-TZVP");
-    comboBase->addItem("cc-pVDZ",    "cc-pVDZ");
+    // Clasificación por número de funciones de base y funciones de polarización:
+    comboBase->addItem("1. mini (Minimal / Rápida de Pruebas)", "mini");
+    comboBase->addItem("2. def2-SVP (Double-Zeta / Coste Bajo)", "def2-SVP");
+    comboBase->addItem("3. 6-31G(d) (Familia Pople / Coste Medio)", "6-31G(d)");
+    comboBase->addItem("4. def2-TZVP (Triple-Zeta / Precisión Alta)", "def2-TZVP");
+    comboBase->addItem("5. ma-def2-TZVP (Con Difusas / Exigente / Excitados S1)", "ma-def2-TZVP");
 
     // =========================================================================
-    // 🎞️ COMBO C: TIPOS DE TAREA (REDUCIDO A TRES OPCIONES ESTRICTAS)
+    // 🎞️ COMBO C: TIPOS DE TAREA (TUS TRES FUNCIONES ESTRICTAS)
     // =========================================================================
     QLabel *lblTarea = new QLabel(tr("Tipo de Tarea:"), &dlg);
     QComboBox *comboTarea = new QComboBox(&dlg);
-    comboTarea->addItem(tr("1.- Optimización Geométrica"),       "Opt");
-    comboTarea->addItem(tr("2.- Trayectoria de Optimización"),   "Opt");
-    // 🎯 CORRECCIÓN CRÍTICA: Forzamos la optimización previa antes de las frecuencias
-    comboTarea->addItem(tr("3.- Frecuencias Vibracionales (IR)"), "Opt Freq");
+    comboTarea->addItem(tr("1.- Optimización Geométrica Estacionaria"), "Opt");
+    comboTarea->addItem(tr("2.- Trayectoria Completa de Optimización"), "Opt");
+    comboTarea->addItem(tr("3.- Frecuencias Analíticas e Espectro IR"), "Opt Freq");
 
     // Campo D: Keywords adicionales
     QLabel *lblExtras = new QLabel(tr("Keywords Adicionales:"), &dlg);
     QLineEdit *txtExtras = new QLineEdit(&dlg);
-    txtExtras->setPlaceholderText(tr("Ej: TightSCF Grid4"));
+    txtExtras->setPlaceholderText(tr("Ej: TightSCF Grid4 CPCM(Solvent)"));
 
     grid->addWidget(lblMetodo, 0, 0);   grid->addWidget(comboMetodo, 0, 1);
     grid->addWidget(lblBase, 1, 0);     grid->addWidget(comboBase, 1, 1);
@@ -658,95 +678,111 @@ void Vista::configurarCalculoOrca(){
     QObject::connect(botones, &QDialogButtonBox::rejected, &dlg, &QDialog::reject);
 
     // =================================================================================
-    // 🔍 FASE DE APERTURA: Sincronizar el diálogo con la RAM de View
+    // 🔍 FASE DE APERTURA: Sincronizar con los argumentos de la RAM de View
     // =================================================================================
     QString argsActuales = m_view->getArgumentosOrca().toUpper();
 
-    // Sincronizar Método
-    for(int i = 0; i < comboMetodo->count(); ++i) {
-        if(argsActuales.contains(comboMetodo->itemText(i).toUpper())) {
-            comboMetodo->setCurrentIndex(i);
-            break;
-        }
+    // 🎯 BLINDAJE DE PIES DE PLOMO: Si la RAM viene vacía por una importación limpia,
+    // pre-configuramos los desplegables en el estándar de oro de tu estudio (PBE0 / def2-TZVP)
+    if (argsActuales.isEmpty()) {
+        comboMetodo->setCurrentIndex(3); // 4. PBE0 (Índice 3 en el combo)
+        comboBase->setCurrentIndex(3);   // 4. def2-TZVP (Índice 3 en el combo)
+        comboTarea->setCurrentIndex(0);  // 1.- Optimización Geométrica Estacionaria
     }
-
-    // Sincronizar Base Orbital
-    for(int i = 0; i < comboBase->count(); ++i) {
-        if(argsActuales.contains(comboBase->itemText(i).toUpper())) {
-            comboBase->setCurrentIndex(i);
-            break;
+    else {
+        // Si el usuario ya tenía parámetros configurados, ejecutamos tu lectura por tokens:
+        for(int i = 0; i < comboMetodo->count(); ++i) {
+            QString funcionalToken = comboMetodo->itemData(i).toString().toUpper();
+            if(!funcionalToken.isEmpty() && argsActuales.contains(funcionalToken)) {
+                comboMetodo->setCurrentIndex(i);
+                break;
+            }
         }
-    }
 
-    // Sincronizar Tipo de Tarea analizando tu propiedad de estado o la keyword
-    if(argsActuales.contains("FREQ")) {
-        comboTarea->setCurrentIndex(2); // Frecuencias
-    } else {
-        // Por consistencia, si venimos de un estado donde m_estado.hayTrayectoria era factible,
-        // o si prefieres por defecto la estática, apuntamos a la opción deseada.
-        if (m_view->getEstado().hayTrayectoria) {
-            comboTarea->setCurrentIndex(1); // Trayectoria
+        for(int i = 0; i < comboBase->count(); ++i) {
+            QString baseToken = comboBase->itemData(i).toString().toUpper();
+            if(!baseToken.isEmpty() && argsActuales.contains(baseToken)) {
+                comboBase->setCurrentIndex(i);
+                break;
+            }
+        }
+
+        if(argsActuales.contains("FREQ")) {
+            comboTarea->setCurrentIndex(2); // Frecuencias
         } else {
-            comboTarea->setCurrentIndex(0); // Optimización Convencional
+            if (m_view->getEstado().hayTrayectoria) comboTarea->setCurrentIndex(1); // Trayectoria
+            else comboTarea->setCurrentIndex(0); // Opt Estacionaria
         }
     }
 
-    // Filtrar los tokens fijos para dejar limpio el cuadro de palabras adicionales del usuario
+    // Filtrado rígido de tokens fijos para limpiar el cuadro de extras del usuario
     QStringList tokensActuales = argsActuales.split(' ', Qt::SkipEmptyParts);
-    QStringList keywordsFijas = {"B3LYP", "PBE0", "BP86", "PBE", "RHF", "UHF", "MP2", "B97-3C",
-                                 "DEF2-SVP", "DEF2-TZVP", "6-31G(D)", "CC-PVDZ", "MINI",
-                                 "OPT", "FREQ", "!", "RIJCOSX"};
+    QStringList keywordsFijas = {"B3LYP", "PBE0", "BP86", "PBE", "B97-3C", "WB97X-D4", "CAM-B3LYP",
+                                 "DEF2-SVP", "DEF2-TZVP", "MA-DEF2-TZVP", "6-31G(D)", "MINI",
+                                 "OPT", "FREQ", "!", "RIJCOSX", "DEF2/J", "DEF2-TZVP/JK", "DEF2-SVP/JK", "D4"};
     QStringList extrasFiltrados;
 
     for (const QString& token : tokensActuales) {
-        if (!keywordsFijas.contains(token)) {
-            extrasFiltrados << token;
-        }
+        if (!keywordsFijas.contains(token)) extrasFiltrados << token;
     }
     txtExtras->setText(extrasFiltrados.join(" "));
 
     // =================================================================================
-    // 🚀 FASE DE CIERRE (PULSADO OK): Composición limpia de la línea de comando final
+    // 🚀 FASE DE FINALIZACIÓN (SÓLO AL PULSAR OK): Composición Automatizada Blindada
     // =================================================================================
     if (dlg.exec() == QDialog::Accepted) {
         QStringList nuevosKeywords;
 
-        // ORCA exige iniciar estrictamente con la exclamación
-        nuevosKeywords << "!";
+        nuevosKeywords << "!"; // Exclamación reglamentaria de ORCA
 
-        // 1. Inyectar Método Seleccionado
-        QString metodoSel = comboMetodo->currentText();
-        nuevosKeywords << metodoSel;
+        QString funcionalSel = comboMetodo->itemData(comboMetodo->currentIndex()).toString();
+        QString baseSel      = comboBase->itemData(comboBase->currentIndex()).toString();
 
-        // 2. Inyectar Base Orbital (B97-3c ya la incluye de forma implícita)
-        if (metodoSel != "B97-3c") {
-            nuevosKeywords << comboBase->currentText();
+        // 1. Inyectamos Funcional y Base (B97-3c la omite por ser método compuesto integrado)
+        nuevosKeywords << funcionalSel;
+        if (funcionalSel != "B97-3c") {
+            nuevosKeywords << baseSel;
         }
 
-        // 3. Inyectar Comando de la Tarea (Opt o Freq)
+        // 2. Inyectar Tipo de Tarea
         nuevosKeywords << comboTarea->currentData().toString();
 
-        // 4. Inyectar Keywords Manuales ingresadas
+        // 3. Inyectar corrección de dispersión D4 automáticamente si aplica
+        if (funcionalSel == "PBE0" || funcionalSel == "B3LYP") {
+            nuevosKeywords << "D4";
+        }
+
+        // 4. Inyectar Keywords manuales del usuario
         QString extrasTexto = txtExtras->text().trimmed();
         if(!extrasTexto.isEmpty()) {
             nuevosKeywords << extrasTexto.split(' ', Qt::SkipEmptyParts);
         }
 
-        // Aceleración RIJCOSX automática si aplica
+        // =====================================================================
+        // 🎯 EL ESCUDO DE ACELERACIÓN NUMÉRICA AUTOMÁTICA (RIJCOSX)
+        // =====================================================================
+        // Si el funcional requiere cálculo de intercambio HF exacto (Híbridos),
+        // inyectamos RIJCOSX acoplado con sus bases auxiliares óptimas correspondientes:
         if (!nuevosKeywords.contains("RIJCOSX", Qt::CaseInsensitive) &&
-            (metodoSel == "B3LYP" || metodoSel == "PBE0" || metodoSel == "BP86" || metodoSel == "PBE")) {
+            (funcionalSel == "PBE0" || funcionalSel == "B3LYP" || funcionalSel == "CAM-B3LYP")) {
+
+            nuevosKeywords << "def2/J";
+            if (baseSel.contains("TZVP", Qt::CaseInsensitive)) {
+                nuevosKeywords << "def2-TZVP/JK";
+            } else {
+                nuevosKeywords << "def2-SVP/JK";
+            }
             nuevosKeywords << "RIJCOSX";
         }
 
         QString comandoFinal = nuevosKeywords.join(" ").simplified().trimmed();
 
-        // Almacenamos el resultado en el cerebro y actualizamos el cuadro de texto
+        // Salvamos los argumentos en el cerebro y refrescamos la barra derecha
         m_view->setArgumentosOrca(comandoFinal);
         ui->etArgumentos->setText(comandoFinal);
 
-        // Segun tipo Calculo m_tipoCalculo
         m_tipoCalculo   = comboTarea->currentIndex();
-        m_programa      = 1; // Orca
+        m_programa      = 1; // ORCA
     }
 }
 
@@ -761,27 +797,23 @@ void Vista::rellenarListaFrecuencias(){
     for (int i = 0; i < modos.size(); ++i) {
         const ModoVibracional& modo = modos[i];
 
-        // 🎯 TU FILTRO STRICTOR: Solo entran si tienen actividad en el infrarrojo (Intensidad > 0)
-        if (modo.intensidad >= 0.0f) {
-
-            // Construimos una cadena de texto elegante y legible para el usuario
-            QString textoItem = QString("%1: %2 cm⁻¹ Int: %3")
-                                    .arg(modo.numero, 2) // Reserva mínimo 2 dígitos para mantener la alineación
-                                    .arg(modo.frecuencia, 7, 'f', 2)
-                                    .arg(modo.intensidad, 6, 'f', 2);
+        // Construimos una cadena de texto elegante y legible para el usuario
+        QString textoItem = QString("%1: %2 cm⁻¹ Int: %3")
+                                .arg(modo.numero, 2) // Reserva mínimo 2 dígitos para mantener la alineación
+                                .arg(modo.frecuencia, 7, 'f', 2)
+                                .arg(modo.intensidad, 6, 'f', 2);
 
 
-            // Creamos el elemento físico para la lista
-            QListWidgetItem* item = new QListWidgetItem(textoItem);
+        // Creamos el elemento físico para la lista
+        QListWidgetItem* item = new QListWidgetItem(textoItem);
 
-            // 💡 TRUCO DE QT: Guardamos el índice real 'i' dentro del propio ítem (UserRole).
-            // Como la lista visual tendrá menos elementos que el vector original (debido al filtro),
-            // esto nos garantizará saber exactamente qué modo de la RAM pulsó el usuario más adelante.
-            item->setData(Qt::UserRole, i);
+        // 💡 TRUCO DE QT: Guardamos el índice real 'i' dentro del propio ítem (UserRole).
+        // Como la lista visual tendrá menos elementos que el vector original (debido al filtro),
+        // esto nos garantizará saber exactamente qué modo de la RAM pulsó el usuario más adelante.
+        item->setData(Qt::UserRole, i);
 
-            // Lo añadimos al widget
-            ui->listaFrecuencias->addItem(item);
-        }
+        // Lo añadimos al widget
+        ui->listaFrecuencias->addItem(item);
     }
 }
 
@@ -841,13 +873,19 @@ void Vista::actualizarAccionesYMenus(const Estado& estado) {
     ui->actionComentarioProyecto->setEnabled(estado.estaEmpezado && !estado.estaVacio);
     ui->actionLimpiarLienzo->setEnabled(estado.estaEmpezado && !estado.estaVacio);
 
-    // Procesos de Computación Química Asíncronos
+    // =========================================================================
+    // 🧮 GESTIÓN DE ACCIONES PARA EL NUEVO MENÚ "CÁLCULO QM"
+    // =========================================================================
+    // El botón de abortar y la acción del menú superior responden coordinadamente
     ui->actionDetenerSimulacion->setEnabled(estado.estaEmpezado && estado.hayProceso);
     ui->btnAbortar->setEnabled(estado.estaEmpezado && estado.hayProceso);
 
-    // 🎯 REPARACIÓN DE SEGURIDAD: Bloqueamos el lanzamiento si ya hay un cálculo corriendo
-    // para evitar colisiones cuánticas de archivos en el directorio /tmp
+    // 🛡️ BLINDAJE DE SEGURIDAD FOTOQUÍMICO:
+    // Si ya hay un cálculo corriendo en /tmp, bloqueamos los disparadores de lanzamiento
+    // y la configuración de parámetros para evitar colisiones críticas de archivos.
     ui->btnLanzar->setEnabled(estado.estaEmpezado && !estado.hayProceso);
+    ui->actionLanzar_Simulacion_Cuantica->setEnabled(estado.estaEmpezado && !estado.hayProceso);
+    ui->actionConfigurar_Parametros_QM->setEnabled(estado.estaEmpezado && !estado.hayProceso);
 }
 
 void Vista::actualizarControlesEdicion(const Estado& estado) {
@@ -872,7 +910,6 @@ void Vista::actualizarPanelResultados(const Estado& estado) {
     ui->barraDerecha->setEnabled(usarPanelDerecho);
 
     if (!usarPanelDerecho) {
-        // 🎯 REPARACIÓN: Si el panel se bloquea, limpiamos los residuos visuales inmediatamente
         ui->listaFrecuencias->clear();
         ui->lblTituloResultados->setText(tr("📊 RESULTADOS Y ESTADO DEL CÁLCULO"));
         return;
@@ -887,27 +924,23 @@ void Vista::actualizarPanelResultados(const Estado& estado) {
         }
     }
 
-    // Mutación adaptativa del bloque de datos
     ui->listaFrecuencias->setVisible(estado.hayFrecuencias);
     ui->listaFrecuencias->setEnabled(!estado.hayProceso);
 
     for (int i = 0; i < ui->formLayoutResultados->count(); ++i) {
         if (QWidget* w = ui->formLayoutResultados->itemAt(i)->widget()) {
-            w->setVisible(!estado.hayFrecuencias); // Ocultar si hay espectro, mostrar si no
+            w->setVisible(!estado.hayFrecuencias);
         }
     }
 
-    // 🎯 REINICIO ADAPTATIVO MIENTRAS SE EJECUTA EL PROCESO
+    // 🎯 REINICIO ADAPTATIVO MIENTRAS SE EJECUTA EL PROCESO (Filas eliminadas)
     if (estado.hayProceso) {
         ui->lblTituloResultados->setText(tr("⏳ CÁLCULO EN PROCESO..."));
-        ui->listaFrecuencias->clear(); // Vaciamos la lista visual por completo
+        ui->listaFrecuencias->clear();
 
-        // Forzamos el estado visual a vacío en el formulario
-        ui->lblEstado->setText(tr("Calculando en segundo plano..."));
         ui->lblEnergia->setText("-- u.a.");
         ui->lblCalorFormacion->setText("-- kcal/mol");
         ui->lblIonizacion->setText("-- eV");
-        ui->lblSimetria->setText("--");
         ui->lblDipolo->setText("-- D");
         ui->lblTiempoCpu->setText("-- s");
     }
@@ -915,14 +948,13 @@ void Vista::actualizarPanelResultados(const Estado& estado) {
         ui->lblTituloResultados->setText(tr("📈 MODOS VIBRACIONALES DETECTADOS"));
         rellenarListaFrecuencias();
     } else {
-        ui->lblTituloResultados->setText(tr("📊 RESULTADOS Y ESTADO DEL CÁLCULO"));
+        ui->lblTituloResultados->setText(tr("📊 RESULTADOS DEL CÁLCULO"));
         if (m_view) {
             ValoresCalculo valores = m_view->getValoresCalculo();
-            ui->lblEstado->setText(estado.hayTrayectoria ? tr("Paso de Optimización %1").arg(m_view->getFotogramaActual() + 1) : tr("Listo / Estacionario"));
+            // Eliminadas las asignaciones a lblEstado y lblSimetria
             ui->lblEnergia->setText(valores.energia);
             ui->lblCalorFormacion->setText(valores.calorFormacion);
             ui->lblIonizacion->setText(valores.ionizacion);
-            ui->lblSimetria->setText(valores.simetria);
             ui->lblDipolo->setText(valores.dipolo);
             ui->lblTiempoCpu->setText(valores.tiempoCpu);
         }
@@ -1290,5 +1322,140 @@ void Vista::on_actionDetenerSimulacion_triggered(){
     if (m_view) {
         m_view->stopProceso(); // El cerebro fulmina el PID y libera los paneles
     }
+}
+
+void Vista::on_actionGeometria_Puntual_triggered(){
+    if (!m_view) return;
+
+    QString filtro = tr("Coordenadas Finales de ORCA (*.xyz)");
+    QString ruta = QFileDialog::getOpenFileName(this, tr("Importar Geometría Puntual de ORCA"), "", filtro);
+    if (ruta.isEmpty()) return;
+
+    // Ya no le pasamos el "1". Solo la ruta y el código de cálculo (0 = Opt)
+    m_view->importarORCA(ruta, 0);
+
+}
+
+void Vista::on_actionTrayectoria_Optimizacion_triggered(){
+    if (!m_view) return;
+
+    // El explorador filtra de forma nativa por el archivo de película de pasos de ORCA
+    QString filtro = tr("Trayectorias de Optimización ORCA (*trj.xyz)");
+
+    QString ruta = QFileDialog::getOpenFileName(this, tr("Importar Trayectoria de ORCA"), "", filtro);
+    if (ruta.isEmpty()) return;
+
+    // Pasamos la ruta limpia y el código de cálculo (1 = Trayectoria)
+    m_view->importarORCA(ruta, 1);
+
+}
+
+void Vista::on_actionCalculo_de_frecuencias_triggered(){
+    if (!m_view) return;
+
+    // Bloqueamos la entrada a matrices hessianas de ORCA para evitar lecturas cruzadas
+    QString filtro = tr("Matrices Hessianas de ORCA (*.hess)");
+
+    QString ruta = QFileDialog::getOpenFileName(this, tr("Importar Modos Vibracionales de ORCA"), "", filtro);
+    if (ruta.isEmpty()) return;
+
+    // Pasamos la ruta limpia y el código de cálculo (2 = Frecuencias / Freq)
+    m_view->importarORCA(ruta, 2);
+
+
+}
+
+void Vista::on_actionExportar_archivo_ORCA_triggered(){
+    if (!m_view) return;
+
+    // 1. Abrimos el explorador de archivos nativo de Qt en modo "Guardar"
+    QString filtro = tr("Archivos de Entrada ORCA (*.inp)");
+    QString ruta = QFileDialog::getSaveFileName(
+        this,
+        tr("Exportar Input para ORCA"),
+        "",
+        filtro
+        );
+
+    // Si el usuario cancela o cierra la ventana, salimos pacíficamente
+    if (ruta.isEmpty()) return;
+
+    // 2. Blindaje de extensión: aseguramos que termine estrictamente en .inp
+    if (!ruta.endsWith(".inp", Qt::CaseInsensitive)) {
+        ruta += ".inp";
+    }
+
+    // 3. Pasamos la ruta limpia al cerebro para que realice la escritura doble
+    m_view->exportarOrca(ruta);
+
+}
+
+void Vista::on_actionArchivo_xyz_ORCA_triggered(){
+    if (!m_view) return;
+
+    // El explorador filtra estrictamente por el archivo .xyz temporal que dejó ORCA a medias
+    QString filtro = tr("Geometría Intermedia de ORCA (*.xyz)");
+    QString ruta = QFileDialog::getOpenFileName(this, tr("Rescatar Cálculo Incompleto (ORCA)"), "", filtro);
+    if (ruta.isEmpty()) return;
+
+    // Llamamos a la nueva pasarela del cerebro con el código de cálculo 0 (Estático/Opt)
+    m_view->cargarXyzORCA(ruta, 0);
+}
+
+void Vista::on_actionConfigurar_Parametros_QM_triggered(){
+    on_btnConfigurarParametros_clicked();
+}
+
+void Vista::on_actionLanzar_Simulacion_Cuantica_triggered(){
+    on_btnLanzar_clicked();
+}
+
+void Vista::on_actionExportar_Input_para_MOPAC_triggered(){
+    if (!m_view) return;
+
+    QString filtro = tr("Archivos de Entrada MOPAC (*.mop)");
+    QString ruta = QFileDialog::getSaveFileName(this, tr("Exportar Input para MOPAC"), "", filtro);
+
+    if (ruta.isEmpty()) return;
+
+    if (!ruta.endsWith(".mop", Qt::CaseInsensitive)) {
+        ruta += ".mop";
+    }
+
+    m_view->exportarMopac(ruta);
+
+}
+
+void Vista::on_actionImportar_opt_triggered(){
+    if (!m_view) return;
+
+    // 🎯 REPARACIÓN DE PIES DE PLOMO: Eliminamos el comodín *.out del filtro visual
+    QString filtro = tr("Resumen de Archivos MOPAC (*.arc)");
+
+    QString ruta = QFileDialog::getOpenFileName(
+        this,
+        tr("Importar Geometría Estacionaria (MOPAC .arc)"),
+        "",
+        filtro
+        );
+
+    if (!ruta.isEmpty()) {
+        m_view->importarMopac(ruta, 0); // Tu cerebro lo procesará de forma limpia y directa
+    }
+}
+
+
+void Vista::on_actionimportar_Trayectoria_triggered(){
+    if (!m_view) return;
+    QString filtro = tr("Archivos Auxiliares MOPAC (*.aux)");
+    QString ruta = QFileDialog::getOpenFileName(this, tr("Importar Trayectoria Dinámica (MOPAC)"), "", filtro);
+    if (!ruta.isEmpty()) m_view->importarMopac(ruta, 1);
+}
+
+void Vista::on_actionImportar_Frq_triggered(){
+    if (!m_view) return;
+    QString filtro = tr("Frecuencias Vibracionales MOPAC (*.out)");
+    QString ruta = QFileDialog::getOpenFileName(this, tr("Importar Espectro Vibracional (MOPAC)"), "", filtro);
+    if (!ruta.isEmpty()) m_view->importarMopac(ruta, 2);
 }
 

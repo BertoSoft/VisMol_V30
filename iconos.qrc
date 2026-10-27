@@ -28,5 +28,8 @@
         <file>iconos/salir.png</file>
         <file>iconos/tabla_periodica.png</file>
         <file>iconos/ver_texto.png</file>
+        <file>iconos/iniciar.png</file>
+        <file>iconos/geometria.png</file>
+        <file>iconos/xyz.jpeg</file>
     </qresource>
 </RCC>
