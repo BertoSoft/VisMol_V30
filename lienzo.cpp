@@ -100,6 +100,43 @@ void Lienzo::renderAtomos(){
             anilloSel->setPen(penSel); anilloSel->setZValue(3);
         }
 
+        // 2. 📐 NUEVO BLOQUE: Halos estroboscópicos multivariable exclusivos para el MODO MEDIDAS
+        if (m_view && m_view->getEstado().modoEditor == ModoMedida) {
+            QColor colorAnilloMedida;
+            bool pintarAnillo = false;
+
+            if (atomo.id == m_view->getIdAtomoMedida1()) {
+                colorAnilloMedida = QColor("#FACC15"); // 🟡 Amarillo para el Átomo 1 (Punto de partida)
+                pintarAnillo = true;
+            }
+            else if (atomo.id == m_view->getIdAtomoMedida2()) {
+                colorAnilloMedida = QColor("#FB923C"); // 🟠 Naranja para el Átomo 2 (Distancia establecida)
+                pintarAnillo = true;
+            }
+            else if (atomo.id == m_view->getIdAtomoMedida3()) {
+                colorAnilloMedida = QColor("#E879F9"); // 🟣 Magenta para el Átomo 3 (Ángulo definido)
+                pintarAnillo = true;
+            }
+            else if (atomo.id == m_view->getIdAtomoMedida4()) {
+                colorAnilloMedida = QColor("#22C55E"); // 🟢 Verde esmeralda para el Átomo 4 (Cierre del Diedro)
+                pintarAnillo = true;
+            }
+
+            if (pintarAnillo) {
+                qreal radioAnillo = radio + 5.0;
+                qreal xAnillo = xCentro - radioAnillo;
+                qreal yAnillo = yCentro - radioAnillo;
+                QGraphicsEllipseItem* anilloMedida = m_escena->addEllipse(xAnillo, yAnillo, radioAnillo * 2.0, radioAnillo * 2.0);
+
+                QPen penMedida(colorAnilloMedida);
+                penMedida.setWidthF(2.5f);
+                penMedida.setStyle(Qt::SolidLine); // Línea continua para que destaque con fuerza
+
+                anilloMedida->setPen(penMedida);
+                anilloMedida->setZValue(3);
+            }
+        }
+
         // =========================================================================
         // 🎯 CAMBIO QUIRÚRGICO: Concatenamos el Símbolo Químico con su ID numérico
         // =========================================================================
@@ -184,6 +221,64 @@ void Lienzo::renderEnlaces(){
                 m_escena->addLine(p1.x() + ox, p1.y() + oy, p2.x() + ox, p2.y() + oy, penEnlaces)->setZValue(0);
                 m_escena->addLine(p1.x() - ox, p1.y() - oy, p2.x() - ox, p2.y() - oy, penEnlaces)->setZValue(0);
             }
+        }
+    }
+
+    // =========================================================================
+    // 📐 NUEVO BLOQUE: LÍNEAS DE TRAZOS (PUNTOS) PARA EL MODO MEDIDAS
+    // =========================================================================
+    if (m_view && m_view->getEstado().modoEditor == ModoEditor::ModoMedida) {
+
+        // Configuración de un pincel estético amarillo fosforescente y discontinuo
+        QPen penMedidas(QColor("#FACC15"));
+        penMedidas.setWidthF(2.0f);
+        penMedidas.setStyle(Qt::DotLine); // ◄ Línea de puntos reglamentaria
+
+        // Recuperamos los IDs activos en el buffer del cerebro
+        int id1 = m_view->getIdAtomoMedida1();
+        int id2 = m_view->getIdAtomoMedida2();
+        int id3 = m_view->getIdAtomoMedida3();
+        int id4 = m_view->getIdAtomoMedida4(); // ◄ Recuperamos el nuevo ID
+
+        QPointF p1, p2, p3, p4;
+        bool tieneP1 = false, tieneP2 = false, tieneP3 = false, tieneP4 = false;
+
+        for (const Atomo& atomo : listaAtomos) {
+            if (atomo.id == id1) {
+                p1 = Mat::rotarPunto(atomo.posicion, m_anguloX, m_anguloY);
+                p1.setX(p1.x() + m_deltaX); p1.setY(p1.y() + m_deltaY);
+                tieneP1 = true;
+            }
+            if (atomo.id == id2) {
+                p2 = Mat::rotarPunto(atomo.posicion, m_anguloX, m_anguloY);
+                p2.setX(p2.x() + m_deltaX); p2.setY(p2.y() + m_deltaY);
+                tieneP2 = true;
+            }
+            if (atomo.id == id3) {
+                p3 = Mat::rotarPunto(atomo.posicion, m_anguloX, m_anguloY);
+                p3.setX(p3.x() + m_deltaX); p3.setY(p3.y() + m_deltaY);
+                tieneP3 = true;
+            }
+            if (atomo.id == id4) {
+                p4 = Mat::rotarPunto(atomo.posicion, m_anguloX, m_anguloY);
+                p4.setX(p4.x() + m_deltaX); p4.setY(p4.y() + m_deltaY);
+                tieneP4 = true;
+            }
+        }
+
+        // Tramo A: segmento de la distancia (Átomo 1 a Átomo 2)
+        if (tieneP1 && tieneP2) {
+            m_escena->addLine(p1.x(), p1.y(), p2.x(), p2.y(), penMedidas)->setZValue(3);
+        }
+
+        // Tramo B: ala del ángulo valencial (Átomo 2 a Átomo 3)
+        if (tieneP2 && tieneP3) {
+            m_escena->addLine(p2.x(), p2.y(), p3.x(), p3.y(), penMedidas)->setZValue(3);
+        }
+
+        // 🎯 Tramo C: El eslabón del Diedro (Conecta Átomo 3 con Átomo 4)
+        if (tieneP3 && tieneP4) {
+            m_escena->addLine(p3.x(), p3.y(), p4.x(), p4.y(), penMedidas)->setZValue(3);
         }
     }
 }

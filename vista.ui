@@ -107,6 +107,26 @@
         </widget>
        </item>
        <item>
+        <widget class="QPushButton" name="btnMedida">
+         <property name="toolTip">
+          <string>Abrir la Tabla Periodica completa 🌐</string>
+         </property>
+         <property name="icon">
+          <iconset resource="iconos.qrc">
+           <normaloff>:/iconos/opt.png</normaloff>:/iconos/opt.png</iconset>
+         </property>
+         <property name="iconSize">
+          <size>
+           <width>24</width>
+           <height>24</height>
+          </size>
+         </property>
+         <property name="checkable">
+          <bool>true</bool>
+         </property>
+        </widget>
+       </item>
+       <item>
         <widget class="Line" name="lineSeparador1">
          <property name="orientation">
           <enum>Qt::Orientation::Horizontal</enum>
@@ -232,26 +252,6 @@
         <widget class="Line" name="lineSeparador2">
          <property name="orientation">
           <enum>Qt::Orientation::Horizontal</enum>
-         </property>
-        </widget>
-       </item>
-       <item>
-        <widget class="QPushButton" name="btnTablaPeriodica">
-         <property name="toolTip">
-          <string>Abrir la Tabla Periodica completa 🌐</string>
-         </property>
-         <property name="icon">
-          <iconset resource="iconos.qrc">
-           <normaloff>:/iconos/tabla_periodica.png</normaloff>:/iconos/tabla_periodica.png</iconset>
-         </property>
-         <property name="iconSize">
-          <size>
-           <width>24</width>
-           <height>24</height>
-          </size>
-         </property>
-         <property name="checkable">
-          <bool>true</bool>
          </property>
         </widget>
        </item>
@@ -699,14 +699,9 @@
    <addaction name="actionDetenerSimulacion"/>
    <addaction name="separator"/>
    <addaction name="separator"/>
-   <addaction name="actionExportar_archivo_ORCA"/>
-   <addaction name="actionExportar_Input_para_MOPAC"/>
    <addaction name="separator"/>
    <addaction name="separator"/>
    <addaction name="separator"/>
-   <addaction name="actionGeometria_Puntual"/>
-   <addaction name="actionTrayectoria_Optimizacion"/>
-   <addaction name="actionCalculo_de_frecuencias"/>
   </widget>
   <action name="actionNuevo">
    <property name="icon">

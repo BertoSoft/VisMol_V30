@@ -70,6 +70,7 @@ enum ModoEditor {
     ModoDibujo,
     ModoCrearEnlace,
     ModoRotacion3D,
+    ModoMedida
 };
 
 struct Estado {
@@ -84,6 +85,9 @@ struct Estado {
     bool        hayRehacer;
     bool        hayTrayectoria;
     bool        hayFrecuencias;
+    QString     medida;
+    QString     angulo;
+    QString     anguloDihedro;
 };
 
 
@@ -125,6 +129,12 @@ public:
     QString         getRutaActual();
     QString         getArgumentosMopac();
     QString         getArgumentosOrca();
+
+    int             getIdAtomoMedida1() const;
+    int             getIdAtomoMedida2() const;
+    int             getIdAtomoMedida3() const;
+    int             getIdAtomoMedida4() const;
+
 
     QVector<Trayectoria>    getPelicula() const;
     QVector<float>  getCalores();
@@ -175,7 +185,10 @@ private:
     void            procesarClickDibujo(const QVector3D& posClick);
     void            procesarClickCrearEnlace(const QVector3D& posClick);
     void            procesarClickRotacion(const QVector3D& posClick);
+    void            procesarClickMedida(const QVector3D& posClick);
+    void            hacerMedida(int idAtomo4);
     int             getIdAtomoFromPosicion(const QVector3D& posClick);
+    Atomo           getAtomo(int id) const;
     float           getDistanciaPuntoSegmento(const QVector3D& posClick, const QVector3D& pos1, const QVector3D& pos2);
     int             getEnlaces(const Atomo& atomo);
     bool            isEnlacePosible(const Atomo& atomo1, const Atomo& atomo2);
@@ -230,6 +243,12 @@ private:
 
     QStack<FotoActual>      m_historialDeshacer;
     QStack<FotoActual>      m_historialRehacer;
+
+    int                     m_idAtomoMedida1;
+    int                     m_idAtomoMedida2;
+    int                     m_idAtomoMedida3;
+    int                     m_idAtomoMedida4;
+
 
 
 };

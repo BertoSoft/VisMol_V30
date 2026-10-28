@@ -123,6 +123,8 @@ private slots:
 
     void on_actionImportar_Frq_triggered();
 
+    void on_btnMedida_clicked();
+
 private:
     Ui::Vista *ui;
 

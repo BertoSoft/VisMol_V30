@@ -41,6 +41,9 @@ void View::setClick(const QVector3D& posClick){
     case ModoRotacion3D:
         procesarClickRotacion(posClick);
         break;
+    case ModoMedida:
+        procesarClickMedida(posClick);
+        break;
     default:
         return;
     }
@@ -773,6 +776,22 @@ QString View::getArgumentosOrca(){
     return m_argumentosOrca;
 }
 
+int View::getIdAtomoMedida1() const{
+    return m_idAtomoMedida1;
+}
+
+int View::getIdAtomoMedida2() const{
+    return m_idAtomoMedida2;
+}
+
+int View::getIdAtomoMedida3() const{
+    return m_idAtomoMedida3;
+}
+
+int View::getIdAtomoMedida4() const{
+    return m_idAtomoMedida4;
+}
+
 int View::getIdAtomoSeleccionado(){
     return m_idAtomoSeleccionado;
 }
@@ -887,6 +906,10 @@ void View::setModoEditor(ModoEditor modo){
 
     m_estado.modoEditor = modo;
 
+    m_idAtomoMedida1 = -1;
+    m_idAtomoMedida2 = -1;
+    m_idAtomoMedida3 = -1;
+
     notificaEstado();
 }
 
@@ -975,6 +998,10 @@ void View::resetValores(){
     // 5.- Limpieza total del historial físico
     m_historialDeshacer.clear();
     m_historialRehacer.clear();
+
+    m_idAtomoMedida1    = -1;
+    m_idAtomoMedida2    = -1;
+    m_idAtomoMedida3    = -1;
 }
 
 void View::notificaEstado(){
@@ -1030,6 +1057,20 @@ int View::getIdAtomoFromPosicion(const QVector3D& posClick){
         }
     }
     return -1;
+}
+
+Atomo View::getAtomo(int id) const{
+    for (const Atomo& atomo : m_listaAtomos) {
+        if (atomo.id == id) {
+            return atomo;
+        }
+    }
+    // Salvaguarda por si se pasa un ID inválido (-1)
+    Atomo vacio;
+    vacio.id = -1;
+    vacio.simbolo = "?";
+    vacio.posicion = QVector3D(0,0,0);
+    return vacio;
 }
 
 float View::getDistanciaPuntoSegmento(const QVector3D& posClick, const QVector3D& pos1, const QVector3D& pos2){
@@ -1250,6 +1291,157 @@ void View::procesarClickCrearEnlace(const QVector3D& posClick){
 
 void View::procesarClickRotacion(const QVector3D& posClick){
 
+}
+
+void View::procesarClickMedida(const QVector3D& posClick){
+    int idAtomoBajoCursor = getIdAtomoFromPosicion(posClick);
+
+    // =========================================================================
+    // 🧹 REGLA 1: CLIC EN EL VACÍO -> BORRADO TOTAL INMEDIATO
+    // =========================================================================
+    if (idAtomoBajoCursor < 0) {
+        m_idAtomoMedida1 = -1;
+        m_idAtomoMedida2 = -1;
+        m_idAtomoMedida3 = -1;
+        m_idAtomoMedida4 = -1;
+        hacerMedida(-1);
+        notificaEstado();
+        return;
+    }
+
+    // =========================================================================
+    // 🔄 REGLA 2: EL 5º CLIC -> RESETEA Y SE CONVIERTE EN EL NUEVO ÁTOMO 1
+    // =========================================================================
+    if (m_idAtomoMedida4 >= 0) {
+        m_idAtomoMedida1 = idAtomoBajoCursor; // Este clic arranca la siguiente tanda
+        m_idAtomoMedida2 = -1;
+        m_idAtomoMedida3 = -1;
+        m_idAtomoMedida4 = -1;
+        hacerMedida(-1);
+        notificaEstado();
+        return;
+    }
+
+    // =========================================================================
+    // FASE 1: CAPTURA DEL ÁTOMO 1
+    // =========================================================================
+    if (m_idAtomoMedida1 < 0) {
+        m_idAtomoMedida1 = idAtomoBajoCursor;
+        hacerMedida(-1);
+        notificaEstado();
+        return;
+    }
+
+    // Deselección amistosa: si vuelve a pulsar el Átomo 1 estando solo, limpia
+    if (idAtomoBajoCursor == m_idAtomoMedida1 && m_idAtomoMedida2 < 0) {
+        m_idAtomoMedida1 = -1;
+        hacerMedida(-1);
+        notificaEstado();
+        return;
+    }
+
+    // =========================================================================
+    // FASE 2: CAPTURA DEL ÁTOMO 2 -> Muestra Distancia
+    // =========================================================================
+    if (m_idAtomoMedida2 < 0) {
+        if (idAtomoBajoCursor != m_idAtomoMedida1) {
+            m_idAtomoMedida2 = idAtomoBajoCursor;
+            hacerMedida(-1);
+            notificaEstado();
+        }
+        return;
+    }
+
+    // =========================================================================
+    // FASE 3: CAPTURA DEL ÁTOMO 3 -> Muestra Distancia + Ángulo Valencial
+    // =========================================================================
+    if (m_idAtomoMedida3 < 0) {
+        if (idAtomoBajoCursor != m_idAtomoMedida2 && idAtomoBajoCursor != m_idAtomoMedida1) {
+            m_idAtomoMedida3 = idAtomoBajoCursor;
+            hacerMedida(-1);
+            notificaEstado();
+        }
+        return;
+    }
+
+    // =========================================================================
+    // FASE 4: CAPTURA DEL ÁTOMO 4 -> Muestra todo + Diedro (¡Y CONSERVA!)
+    // =========================================================================
+    if (idAtomoBajoCursor != m_idAtomoMedida3 &&
+        idAtomoBajoCursor != m_idAtomoMedida2 &&
+        idAtomoBajoCursor != m_idAtomoMedida1) {
+
+        m_idAtomoMedida4 = idAtomoBajoCursor; // 🎯 Fijamos la variable en la RAM de forma persistente
+
+        // Ejecutamos hacerMedida pasándole m_idAtomoMedida4
+        hacerMedida(m_idAtomoMedida4);
+        notificaEstado();
+    }
+}
+
+void View::hacerMedida(int idAtomo4) {
+    // 1. Limpieza total de los buffers de texto del estado antes de evaluar
+    m_estado.medida         = "";
+    m_estado.angulo         = "";
+    m_estado.anguloDihedro  = "";
+
+    // NIVEL 1: Si al menos tenemos los dos primeros átomos -> Calculamos Distancia
+    if (m_idAtomoMedida1 >= 0 && m_idAtomoMedida2 >= 0) {
+        QVector3D p1 = getAtomo(m_idAtomoMedida1).posicion;
+        QVector3D p2 = getAtomo(m_idAtomoMedida2).posicion;
+        float dist = p1.distanceToPoint(p2) / 100.0f; // Conversión a Å
+
+        m_estado.medida = QString("Distancia %1(%2)-%3(%4): %5 Å")
+                                       .arg(getAtomo(m_idAtomoMedida1).simbolo).arg(m_idAtomoMedida1)
+                                       .arg(getAtomo(m_idAtomoMedida2).simbolo).arg(m_idAtomoMedida2)
+                                       .arg(dist, 0, 'f', 4);
+    }
+
+    // NIVEL 2: Si además tenemos el tercer átomo -> Sumamos Ángulo Valencial
+    if (m_idAtomoMedida1 >= 0 && m_idAtomoMedida2 >= 0 && m_idAtomoMedida3 >= 0) {
+        QVector3D p1 = getAtomo(m_idAtomoMedida1).posicion;
+        QVector3D p2 = getAtomo(m_idAtomoMedida2).posicion; // Vértice
+        QVector3D p3 = getAtomo(m_idAtomoMedida3).posicion;
+
+        QVector3D v21 = (p1 - p2).normalized();
+        QVector3D v23 = (p3 - p2).normalized();
+        float coseno = qBound(-1.0f, QVector3D::dotProduct(v21, v23), 1.0f);
+        float anguloGrados = qAcos(coseno) * (180.0f / M_PI);
+
+        m_estado.angulo = QString("Ángulo %1(%2)-%3(%4)-%4(%5): %6°")
+                                    .arg(getAtomo(m_idAtomoMedida1).simbolo).arg(m_idAtomoMedida1)
+                                    .arg(getAtomo(m_idAtomoMedida2).simbolo).arg(m_idAtomoMedida2)
+                                    .arg(getAtomo(m_idAtomoMedida3).simbolo).arg(m_idAtomoMedida3)
+                                    .arg(anguloGrados, 0, 'f', 2);
+    }
+
+    // NIVEL 3: Si se activa el cuarto átomo local -> Sumamos Ángulo Diedro
+    if (m_idAtomoMedida1 >= 0 && m_idAtomoMedida2 >= 0 && m_idAtomoMedida3 >= 0 && idAtomo4 >= 0) {
+        QVector3D p1 = getAtomo(m_idAtomoMedida1).posicion;
+        QVector3D p2 = getAtomo(m_idAtomoMedida2).posicion;
+        QVector3D p3 = getAtomo(m_idAtomoMedida3).posicion;
+        QVector3D p4 = getAtomo(idAtomo4).posicion;
+
+        QVector3D b1 = p2 - p1;
+        QVector3D b2 = p3 - p2;
+        QVector3D b3 = p4 - p3;
+
+        QVector3D n1 = QVector3D::crossProduct(b1, b2).normalized();
+        QVector3D n2 = QVector3D::crossProduct(b2, b3).normalized();
+        QVector3D m1 = QVector3D::crossProduct(n1, b2.normalized());
+
+        float diedroGrados = qAtan2(QVector3D::dotProduct(m1, n2), QVector3D::dotProduct(n1, n2)) * (180.0f / M_PI);
+
+        m_estado.anguloDihedro = QString("Diedro %1(%2)-%3(%4)-%5(%6)-%7(%8): %9°")
+                                    .arg(getAtomo(m_idAtomoMedida1).simbolo).arg(m_idAtomoMedida1)
+                                    .arg(getAtomo(m_idAtomoMedida2).simbolo).arg(m_idAtomoMedida2)
+                                    .arg(getAtomo(m_idAtomoMedida3).simbolo).arg(m_idAtomoMedida3)
+                                    .arg(getAtomo(idAtomo4).simbolo).arg(idAtomo4)
+                                    .arg(diedroGrados, 0, 'f', 2);
+    }
+
+    // 🚀 ENVÍO DIRECTO A LA VISTA: Emitimos el estado con las cadenas listas
+    emit actualizarVista(m_estado);
 }
 
 // =========================================================================

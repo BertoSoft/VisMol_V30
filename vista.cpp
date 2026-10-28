@@ -56,7 +56,7 @@ void Vista::initGrupoElementos(){
     m_grupoIzdo->addButton(ui->btnOxigeno);
     m_grupoIzdo->addButton(ui->btnNitrogeno);
     m_grupoIzdo->addButton(ui->btnAzufre);
-    m_grupoIzdo->addButton(ui->btnTablaPeriodica);
+    m_grupoIzdo->addButton(ui->btnMedida);
 
 }
 
@@ -321,15 +321,19 @@ void Vista::stopAnimaciones(const Estado& estado) {
     if (m_timerVibracion && m_timerVibracion->isActive()) {
         m_timerVibracion->stop();
     }
-    m_idxModoActivo = -1;
-    ui->wGrafica->setModoActivo(-1);
 
-    // 🎯 REPARACIÓN: Si el modo de edición NO es rotación, forzamos el reposo de la molécula
+    // 🛡️ REPARACIÓN DE PIES DE PLOMO: Solo reiniciamos el modo activo de la gráfica
+    // si el nuevo estado de la interfaz no contiene trayectorias ni espectros IR válidos
+    if (!estado.hayTrayectoria && !estado.hayFrecuencias) {
+        m_idxModoActivo = -1;
+        ui->wGrafica->setModoActivo(-1);
+    }
+
+    // Si el modo de edición NO es rotación, forzamos el reposo de la molécula
     if (m_view) {
         if (estado.modoEditor != ModoEditor::ModoRotacion3D) {
             m_view->actualizarFaseVibracion(-1, 0.0f, 0.0f); // Limpia la deformación en la RAM
         } else if (m_timerVibracion && !m_timerVibracion->isActive() && estado.hayFrecuencias) {
-            // Si es rotación pero el timer se paró por error, dejamos que conserve el reposo
             m_view->actualizarFaseVibracion(-1, 0.0f, 0.0f);
         }
     }
@@ -343,20 +347,6 @@ void Vista::stopAnimaciones(const Estado& estado) {
         ui->frameTrayectoria->setVisible(false);
         ui->sliderPasos->setRange(0, 0);
         ui->sliderPasos->setValue(0);
-    }
-
-    // 3. SINCRO DE LA BARRA DE ESTADO... (dejar como estaba)
-    if (!estado.estaEmpezado) {
-        m_lblMesaje->setText(tr(" Listo. Cree un nuevo proyecto o abra un archivo para comenzar."));
-    } else {
-        QString txt = "";
-        switch (estado.modoEditor) {
-        case ModoSeleccion:   txt = tr(" Modo Selección | Use el puntero para interactuar con los átomos."); break;
-        case ModoCrearEnlace: txt = tr(" Modo Enlace 🔗 | Seleccione dos átomos para enlazarlos."); break;
-        case ModoRotacion3D:  txt = tr(" Modo Rotación 3D 🔄 | Arrastre el lienzo para orbitar la molécula."); break;
-        case ModoDibujo:      txt = tr(" Modo Dibujo 🧪 | Añadiendo elemento: %1 (Clic en lienzo para colocar)").arg(m_view->getAtomoActivo()); break;
-        }
-        m_lblMesaje->setText(txt);
     }
 }
 
@@ -894,7 +884,9 @@ void Vista::actualizarControlesEdicion(const Estado& estado) {
         ui->btnSeleccion->setChecked(estado.modoEditor == ModoEditor::ModoSeleccion);
         ui->btnModoEnlace->setChecked(estado.modoEditor == ModoEditor::ModoCrearEnlace);
         ui->btnModoRotar->setChecked(estado.modoEditor == ModoEditor::ModoRotacion3D);
-    } else {
+        ui->btnMedida->setChecked(estado.modoEditor == ModoEditor::ModoMedida);
+    }
+    else {
         ui->barraIzda->setEnabled(false);
         m_grupoIzdo->setExclusive(false);
         if (m_grupoIzdo->checkedButton()) {
@@ -916,7 +908,7 @@ void Vista::actualizarPanelResultados(const Estado& estado) {
     }
 
     if (m_view) {
-        if(ui->comboSoftware->currentIndex()==0){
+        if(ui->comboSoftware->currentIndex() == 0){
             ui->etArgumentos->setText(m_view->getArgumentosMopac());
         }
         else{
@@ -933,7 +925,7 @@ void Vista::actualizarPanelResultados(const Estado& estado) {
         }
     }
 
-    // 🎯 REINICIO ADAPTATIVO MIENTRAS SE EJECUTA EL PROCESO (Filas eliminadas)
+    // GESTIÓN DEL PANEL DERECHO CONVENCIONAL MIENTRAS SE EJECUTA EL PROCESO
     if (estado.hayProceso) {
         ui->lblTituloResultados->setText(tr("⏳ CÁLCULO EN PROCESO..."));
         ui->listaFrecuencias->clear();
@@ -951,7 +943,6 @@ void Vista::actualizarPanelResultados(const Estado& estado) {
         ui->lblTituloResultados->setText(tr("📊 RESULTADOS DEL CÁLCULO"));
         if (m_view) {
             ValoresCalculo valores = m_view->getValoresCalculo();
-            // Eliminadas las asignaciones a lblEstado y lblSimetria
             ui->lblEnergia->setText(valores.energia);
             ui->lblCalorFormacion->setText(valores.calorFormacion);
             ui->lblIonizacion->setText(valores.ionizacion);
@@ -975,9 +966,10 @@ void Vista::actualizarGraficaEInferior(const Estado& estado) {
     bool tieneConvergenciaNormal = (estado.estaOptimizado && m_view && !m_view->getCalores().isEmpty() && !esperandoSegundaFase);
 
     // =========================================================================
-    // 🎞️ CASO A: REPRODUCCIÓN DINÁMICA DE LA PELÍCULA (.AUX / _TRJ.XYZ)
+    // 🔀 ESTRUCTURA EXCLUYENTE CONCATENADA: Evita la sobreescritura del Caso D
     // =========================================================================
     if (estado.hayTrayectoria) {
+        // 🎞️ CASO A: REPRODUCCIÓN DINÁMICA DE LA PELÍCULA (.AUX / _TRJ.XYZ)
         ui->lblTituloFreq->setText(tr("🎞️ PERFIL DE TRAYECTORIA ENERGÉTICA"));
         ui->wGrafica->setVisible(true);
         ui->frameTrayectoria->setVisible(true);
@@ -991,13 +983,9 @@ void Vista::actualizarGraficaEInferior(const Estado& estado) {
         ui->sliderPasos->setRange(0, m_view->getNumeroFotogramas() - 1);
         ui->sliderPasos->setValue(m_view->getFotogramaActual());
         ui->sliderPasos->blockSignals(false);
-        return;
     }
-
-    // =========================================================================
-    // 📈 CASO B: ESPECTRO DE ABSORCIÓN INFRARROJA ACTIVO (IR)
-    // =========================================================================
-    if (estado.hayFrecuencias) {
+    else if (estado.hayFrecuencias) {
+        // 📈 CASO B: ESPECTRO DE ABSORCIÓN INFRARROJA ACTIVO (IR)
         ui->lblTituloFreq->setText(tr("📈 ESPECTRO DE ABSORCIÓN INFRARROJA (IR)"));
         ui->wGrafica->setVisible(true);
 
@@ -1026,13 +1014,9 @@ void Vista::actualizarGraficaEInferior(const Estado& estado) {
                 m_timerVibracion->start(30);
             }
         }
-        return;
     }
-
-    // =========================================================================
-    // 📊 CASO C: CURVA DE CONVERGENCIA ESTÁTICA
-    // =========================================================================
-    if (tieneConvergenciaNormal) {
+    else if (tieneConvergenciaNormal) {
+        // 📊 CASO C: CURVA DE CONVERGENCIA ESTÁTICA
         ui->lblTituloFreq->setText(tr("📊 CURVA DE CONVERGENCIA ENERGÉTICA"));
         ui->wGrafica->setVisible(true);
 
@@ -1040,21 +1024,18 @@ void Vista::actualizarGraficaEInferior(const Estado& estado) {
             ui->wGrafica->setDatosCalores(m_view->getCalores());
             ui->wGrafica->setPasoActual(m_view->getCalores().size() - 1);
         }
-        return;
+    }
+    else {
+        // 💤 CASO D: REPOSO ABSOLUTO O TRANSICIÓN INTERMEDIA
+        ui->lblTituloFreq->setText(esperandoSegundaFase ? tr("⏳ OPTIMIZACIÓN LISTA. CALCULANDO MODOS VIBRACIONALES...") : "");
+        ui->wGrafica->setVisible(true);
+
+        QVector<ModoVibracional> vacio;
+        ui->wGrafica->setDatosEspectro(vacio);
     }
 
     // =========================================================================
-    // 💤 CASO D: REPOSO ABSOLUTO O TRANSICIÓN INTERMEDIA
-    // =========================================================================
-    ui->lblTituloFreq->setText(esperandoSegundaFase ? tr("⏳ OPTIMIZACIÓN LISTA. CALCULANDO MODOS VIBRACIONALES...") : "");
-    ui->wGrafica->setVisible(true);
-
-    QVector<ModoVibracional> vacio;
-    ui->wGrafica->setDatosEspectro(vacio);
-
-
-    // =========================================================================
-    // 💬 7. BARRA DE CONSEJOS EN EL SUELO DE LA INTERFAZ
+    // 💬 7. BARRA DE CONSEJOS Y MEDIDAS EN EL SUELO DE LA INTERFAZ
     // =========================================================================
     if (!estado.estaEmpezado) {
         m_lblMesaje->setText(tr(" Listo. Cree un nuevo proyecto o abra un archivo para comenzar."));
@@ -1065,6 +1046,23 @@ void Vista::actualizarGraficaEInferior(const Estado& estado) {
         case ModoCrearEnlace: txt = tr(" Modo Enlace 🔗 | Seleccione dos átomos para enlazarlos."); break;
         case ModoRotacion3D:  txt = tr(" Modo Rotación 3D 🔄 | Arrastre el lienzo para orbitar la molécula."); break;
         case ModoDibujo:      txt = tr(" Modo Dibujo 🧪 | Añadiendo elemento: %1 (Clic en lienzo para colocar)").arg(m_view->getAtomoActivo()); break;
+
+        // 📐 Aquí se computan las medidas reales en el suelo de la UI de forma garantizada
+        case ModoMedida: {
+            if (!estado.anguloDihedro.isEmpty()) {
+                txt = QString("%1   |   %2   |   %3").arg(estado.medida).arg(estado.angulo).arg(estado.anguloDihedro);
+            }
+            else if (!estado.angulo.isEmpty()) {
+                txt = QString("%1   |   %2").arg(estado.medida).arg(estado.angulo);
+            }
+            else if (!estado.medida.isEmpty()) {
+                txt = estado.medida;
+            }
+            else {
+                txt = tr(" Modo Medidas 📐 | Haga clic en átomos sucesivos para calcular distancias, ángulos y diedros.");
+            }
+            break;
+        }
         }
         m_lblMesaje->setText(txt);
     }
@@ -1171,6 +1169,10 @@ void Vista::on_btnModoEnlace_clicked(){
 
 void Vista::on_btnModoRotar_clicked(){
     m_view->setModoEditor(ModoRotacion3D);
+}
+
+void Vista::on_btnMedida_clicked(){
+    m_view->setModoEditor(ModoMedida);
 }
 
 void Vista::on_actionDeshacer_triggered(){
@@ -1443,7 +1445,6 @@ void Vista::on_actionImportar_opt_triggered(){
         m_view->importarMopac(ruta, 0); // Tu cerebro lo procesará de forma limpia y directa
     }
 }
-
 
 void Vista::on_actionimportar_Trayectoria_triggered(){
     if (!m_view) return;
