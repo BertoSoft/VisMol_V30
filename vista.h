@@ -171,7 +171,7 @@ private:
     QTimer*         m_timerVibracion    = nullptr; // Temporizador dedicado al motor cuántico
     float           m_faseVibracion     = 0.0f;    // Ángulo oscilador continuo
     int             m_idxModoActivo     = -1;      // Índice de la RAM que se está moviendo
-    float           m_escalaVisual      = 1.0f;    // Amplitud para exagerar el movimiento del enlace
+    float           m_escalaVisual      = 0.3f;    // Amplitud para exagerar el movimiento del enlace
 
 
 };
